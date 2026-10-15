@@ -1,17 +1,41 @@
-# budget_buddy
+# BudgetBuddy
 
-A new Flutter project.
+Student budget and expense tracker built with Flutter and Firebase.
 
-## Getting Started
+## Development target
+Chrome first; Android device testing before submission.
 
-This project is a starting point for a Flutter application.
+## Setup
+1. Install the team's agreed Flutter SDK version.
+2. Clone this repository.
+3. Run flutter pub get.
+4. Run flutter run -d chrome.
 
-A few resources to get you started if this is your first Flutter project:
+## Quality checks
+dart format --output=none --set-exit-if-changed lib test
+flutter analyze
+flutter test
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+## Firebase
+- Use the shared team Firebase project.
+- Client configuration is committed.
+- Never commit Admin SDK keys or signing secrets.
+- Only designated maintainers deploy rules.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Team workflow
+- Create a feature branch.
+- Open a pull request.
+- Have another member review it.
+- Keep main runnable.
+
+## Shared conventions
+Read docs/team_contract.md before implementing models or features.
+
+## Current implementation
+- Firebase initialization.
+- Placeholder Expenses, Summary, and Budget tabs.
+- Shared expense categories.
+- Starter widget test.
+- Initial ownership-based Firestore rules.
+
+Authentication screens and application features are not implemented yet.
