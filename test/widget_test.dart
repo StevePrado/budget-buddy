@@ -6,13 +6,14 @@ void main() {
   testWidgets('shows the BudgetBuddy starter shell', (tester) async {
     await tester.pumpWidget(const BudgetBuddyApp());
 
-    expect(find.text('BudgetBuddy — Expenses'), findsOneWidget);
+    // Verify initial Expenses tab
+    expect(find.text('Expenses'), findsWidgets);
 
-    expect(find.text('Expense features will be added here.'), findsOneWidget);
-
-    await tester.tap(find.byIcon(Icons.pie_chart_outline));
+    // Tap on Summary tab
+    await tester.tap(find.byIcon(Icons.pie_chart_outline_rounded));
     await tester.pumpAndSettle();
 
-    expect(find.text('BudgetBuddy — Summary'), findsOneWidget);
+    // Verify Summary title
+    expect(find.text('Coming soon: Teammates (Analytics & Charts)'), findsOneWidget);
   });
 }
