@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+// 1. Import your new budget screen file
+import '../budget/budget_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -12,10 +14,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   static const _titles = ['Expenses', 'Summary', 'Budget'];
 
+  // 2. Replace the placeholder at index 2 with BudgetScreen()
   static const _pages = [
     Center(child: Text('Expense features will be added here.')),
     Center(child: Text('Budget summary will be added here.')),
-    Center(child: Text('Budget settings will be added here.')),
+    BudgetScreen(), // <-- Your Module B screen is plugged in here!
   ];
 
   @override
