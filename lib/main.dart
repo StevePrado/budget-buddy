@@ -1,12 +1,12 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'constants/app_strings.dart';
 import 'firebase_options.dart';
+import 'screens/auth/login_screen.dart';
 import 'theme/app_theme.dart';
 import 'widgets/main_shell.dart';
 
-// Firebase teammate: add `await Firebase.initializeApp(...)` in main()
-// and swap `home:` for an auth gate (login screen if signed out, MainShell if signed in).
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
@@ -24,7 +24,23 @@ class BudgetBuddyApp extends StatelessWidget {
       theme: AppTheme.dark,
       darkTheme: AppTheme.dark,
       themeMode: ThemeMode.dark,
-      home: const MainShell(),
+      // Auth Gate: shows LoginScreen if not logged in, MainShell if logged in
+      home: StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+              body: Center(
+                child: CircularProgressIndicator(),
+              ),
+            );
+          }
+          if (snapshot.hasData) {
+            return const MainShell();
+          }
+          return const LoginScreen();
+        },
+      ),
     );
   }
 }
