@@ -21,11 +21,15 @@ class ExpenseService {
 
   // 1. Stream all expenses, ordered by date descending
   Stream<List<ExpenseModel>> streamExpenses() {
-    return _expensesRef
-        .orderBy('date', descending: true)
-        .snapshots()
-        .map((snap) =>
-            snap.docs.map((doc) => ExpenseModel.fromFirestore(doc)).toList());
+    try {
+      return _expensesRef
+          .orderBy('date', descending: true)
+          .snapshots()
+          .map((snap) =>
+              snap.docs.map((doc) => ExpenseModel.fromFirestore(doc)).toList());
+    } catch (_) {
+      return Stream.value([]);
+    }
   }
 
   // 2. Add a new expense
@@ -56,6 +60,30 @@ class ExpenseService {
       }
     }
     await _expensesRef.doc(expense.id).delete();
+  }
+
+  // 4b. Delete multiple expenses using Firestore batched write and delete receipt files
+  Future<void> deleteMultipleExpenses(List<ExpenseModel> expenses) async {
+    if (expenses.isEmpty) return;
+
+    if (!kIsWeb) {
+      for (final expense in expenses) {
+        if (expense.receiptPath != null) {
+          try {
+            final file = File(expense.receiptPath!);
+            if (await file.exists()) {
+              await file.delete();
+            }
+          } catch (_) {}
+        }
+      }
+    }
+
+    final batch = _firestore.batch();
+    for (final expense in expenses) {
+      batch.delete(_expensesRef.doc(expense.id));
+    }
+    await batch.commit();
   }
 
   // 5. Copy a picked image to the app's documents directory and return its path
