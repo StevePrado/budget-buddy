@@ -1,5 +1,6 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-// 1. Import your new budget screen file
+
 import '../budget/budget_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -14,17 +15,49 @@ class _HomeScreenState extends State<HomeScreen> {
 
   static const _titles = ['Expenses', 'Summary', 'Budget'];
 
-  // 2. Replace the placeholder at index 2 with BudgetScreen()
   static const _pages = [
     Center(child: Text('Expense features will be added here.')),
     Center(child: Text('Budget summary will be added here.')),
-    BudgetScreen(), // <-- Your Module B screen is plugged in here!
+    BudgetScreen(),
   ];
+
+  Future<void> _confirmLogout() async {
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Log out?'),
+        content: const Text('Are you sure you want to log out?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Log out'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldLogout == true) {
+      await FirebaseAuth.instance.signOut();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('BudgetBuddy — ${_titles[_selectedIndex]}')),
+      appBar: AppBar(
+        title: Text('BudgetBuddy — ${_titles[_selectedIndex]}'),
+        actions: [
+          IconButton(
+            tooltip: 'Log out',
+            icon: const Icon(Icons.logout),
+            onPressed: _confirmLogout,
+          ),
+        ],
+      ),
       body: IndexedStack(index: _selectedIndex, children: _pages),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,

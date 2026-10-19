@@ -12,6 +12,12 @@ class BudgetScreen extends StatefulWidget {
 class _BudgetScreenState extends State<BudgetScreen> {
   final BudgetService _budgetService = BudgetService();
 
+  @override
+  void dispose() {
+    _budgetService.dispose();
+    super.dispose();
+  }
+
   // Open a Dialog with a validated Form to edit Daily, Weekly, and Monthly budgets
   void _showEditBudgetDialog(BudgetModel currentBudget) {
     final formKey = GlobalKey<FormState>();
@@ -113,8 +119,12 @@ class _BudgetScreenState extends State<BudgetScreen> {
                         if (context.mounted) {
                           Navigator.pop(context);
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Budget saved successfully!'),
+                            SnackBar(
+                              content: Text(
+                                _budgetService.isAuthenticated
+                                    ? 'Budget saved successfully!'
+                                    : 'Budget saved for this session.',
+                              ),
                               backgroundColor: Colors.green,
                             ),
                           );
@@ -177,10 +187,6 @@ class _BudgetScreenState extends State<BudgetScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Budget Setup & Summary'),
-        centerTitle: true,
-      ),
       body: StreamBuilder<BudgetModel>(
         stream: _budgetService.streamUserBudget(),
         builder: (context, budgetSnapshot) {
@@ -229,10 +235,21 @@ class _BudgetScreenState extends State<BudgetScreen> {
                           child: ChoiceChip(
                             label: Text('$period View'),
                             selected: isSelected,
-                            onSelected: (selected) {
-                              if (selected) {
-                                setState(() {});
-                                _budgetService.updateSelectedPeriod(period);
+                            onSelected: (selected) async {
+                              if (!selected) return;
+                              try {
+                                await _budgetService.updateSelectedPeriod(period);
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'Error updating budget period: $e',
+                                      ),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
                               }
                             },
                           ),
@@ -240,6 +257,25 @@ class _BudgetScreenState extends State<BudgetScreen> {
                       }).toList(),
                     ),
                     const SizedBox(height: 16),
+                    if (!_budgetService.isAuthenticated) ...[
+                      const Card(
+                        child: Padding(
+                          padding: EdgeInsets.all(12),
+                          child: Row(
+                            children: [
+                              Icon(Icons.info_outline, size: 20),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Not signed in. Budgets are available for this session only and are not synced.',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
 
                     // 1. BUDGET SUMMARY CARD (Total Budget, Total Expenses, Remaining Budget)
                     Card(
