@@ -1,7 +1,8 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../../widgets/logout_dialog.dart';
 import '../budget/budget_screen.dart';
+import '../profile/profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -13,37 +14,14 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
 
-  static const _titles = ['Expenses', 'Summary', 'Budget'];
+  static const _titles = ['Expenses', 'Summary', 'Budget', 'Profile'];
 
   static const _pages = [
     Center(child: Text('Expense features will be added here.')),
     Center(child: Text('Budget summary will be added here.')),
     BudgetScreen(),
+    ProfileScreen(),
   ];
-
-  Future<void> _confirmLogout() async {
-    final shouldLogout = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Log out?'),
-        content: const Text('Are you sure you want to log out?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Log out'),
-          ),
-        ],
-      ),
-    );
-
-    if (shouldLogout == true) {
-      await FirebaseAuth.instance.signOut();
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,7 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(
             tooltip: 'Log out',
             icon: const Icon(Icons.logout),
-            onPressed: _confirmLogout,
+            onPressed: () => confirmAndLogout(context),
           ),
         ],
       ),
@@ -78,6 +56,10 @@ class _HomeScreenState extends State<HomeScreen> {
           NavigationDestination(
             icon: Icon(Icons.account_balance_wallet_outlined),
             label: 'Budget',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            label: 'Profile',
           ),
         ],
       ),
