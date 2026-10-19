@@ -527,7 +527,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                                 const SizedBox(height: 10),
                                 _buildSummaryRow(
                                   label: 'Total Expenses',
-                                  amountText: formatPeso(periodExpenses),
+                                  amountText: formatSpent(periodExpenses),
                                   color: AppColors.warning,
                                 ),
                                 const Divider(
@@ -626,7 +626,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                           subtitle: 'Full month allowance allocation',
                           amount: budget.monthlyBudget,
                           icon: Icons.calendar_month_rounded,
-                          accentColor: AppColors.success,
+                          accentColor: const Color(0xFF22D3EE),
                           isActive: _selectedViewPeriod == 'Monthly',
                         ),
                         const SizedBox(height: 72),

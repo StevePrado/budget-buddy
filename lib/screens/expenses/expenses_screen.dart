@@ -7,6 +7,7 @@ import '../../models/expense_model.dart';
 import '../../services/expense_service.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/money_format.dart';
+import '../../widgets/confirm_dialog.dart';
 import 'add_edit_expense_screen.dart';
 
 class ExpensesScreen extends StatefulWidget {
@@ -79,43 +80,14 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
     if (selectedExpenses.isEmpty) return;
 
     final count = selectedExpenses.length;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppConfirmDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: AppColors.border),
-        ),
-        title: Text(
-          'Delete $count expense${count > 1 ? 's' : ''}?',
-          style: const TextStyle(
-            color: AppColors.textPrimary,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        content: Text(
+      title: 'Delete $count expense${count > 1 ? 's' : ''}?',
+      message:
           'Are you sure you want to delete $count expense${count > 1 ? 's' : ''}? This cannot be undone.',
-          style: const TextStyle(color: AppColors.textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: AppColors.textSecondary),
-            ),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.danger,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+      cancelText: 'Cancel',
+      confirmText: 'Delete',
+      confirmColor: AppColors.danger,
     );
 
     if (confirmed == true) {
@@ -621,13 +593,13 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                   ),
                 ),
 
-              // G1: Comma formatted amount
+              // 2.2 & 2.2b: Spending format (-₱X.XX) with plain white text
               Text(
-                formatPeso(expense.amount),
+                formatSpent(expense.amount),
                 style: const TextStyle(
                   fontWeight: FontWeight.w700,
                   fontSize: 15,
-                  color: AppColors.danger,
+                  color: AppColors.textPrimary,
                 ),
               ),
             ],

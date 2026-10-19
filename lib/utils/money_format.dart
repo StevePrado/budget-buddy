@@ -6,6 +6,10 @@ import 'package:intl/intl.dart';
 String formatPeso(num v) =>
     NumberFormat.currency(symbol: '₱', decimalDigits: 2).format(v);
 
+/// Formats spending amounts with a negative sign and comma formatting
+/// Example: 1250 -> -₱1,250.00
+String formatSpent(num v) => '-${formatPeso(v.abs())}';
+
 /// Strips commas and whitespace from an amount string
 String stripCommas(String text) => text.replaceAll(',', '').trim();
 

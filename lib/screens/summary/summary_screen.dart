@@ -263,7 +263,7 @@ class _SummaryScreenState extends State<SummaryScreen> {
                             const SizedBox(width: 10),
                             _buildInfoCard(
                               label: 'Total Spent',
-                              value: formatPeso(totalExpenses),
+                              value: formatSpent(totalExpenses),
                               color: AppColors.warning,
                               icon: Icons.shopping_cart_rounded,
                             ),
@@ -358,9 +358,9 @@ class _SummaryScreenState extends State<SummaryScreen> {
                                   ),
                                 ),
                                 trailing: Text(
-                                  formatPeso(e.amount),
+                                  formatSpent(e.amount),
                                   style: const TextStyle(
-                                    color: AppColors.danger,
+                                    color: AppColors.textPrimary,
                                     fontWeight: FontWeight.w700,
                                     fontSize: 14,
                                   ),
@@ -472,7 +472,7 @@ class _SummaryScreenState extends State<SummaryScreen> {
                   ),
                 ),
                 Text(
-                  formatPeso(spent),
+                  formatSpent(spent),
                   style: TextStyle(
                     color: color,
                     fontWeight: FontWeight.w700,

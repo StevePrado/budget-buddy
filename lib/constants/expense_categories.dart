@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../theme/app_colors.dart';
 
 // Single Expense Category Model
 class ExpenseCategory {
@@ -16,17 +15,17 @@ class ExpenseCategories {
   ExpenseCategories._();
 
   static const food =
-      ExpenseCategory('Food', Icons.restaurant_rounded, AppColors.warning);
+      ExpenseCategory('Food', Icons.restaurant_rounded, Color(0xFFFFC53D)); // yellow
   static const transportation = ExpenseCategory(
-      'Transportation', Icons.directions_bus_rounded, AppColors.primary);
+      'Transportation', Icons.directions_bus_rounded, Color(0xFF4C8DFF)); // blue
   static const school =
-      ExpenseCategory('School', Icons.school_rounded, AppColors.secondary);
+      ExpenseCategory('School', Icons.school_rounded, Color(0xFF8B7CFF)); // purple
   static const loadInternet = ExpenseCategory(
-      'Load/Internet', Icons.wifi_rounded, AppColors.success);
+      'Load/Internet', Icons.wifi_rounded, Color(0xFFFF9F43)); // orange
   static const entertainment = ExpenseCategory(
-      'Entertainment', Icons.sports_esports_rounded, AppColors.danger);
+      'Entertainment', Icons.sports_esports_rounded, Color(0xFFFF7EB6)); // pink
   static const other = ExpenseCategory(
-      'Other', Icons.category_rounded, AppColors.textSecondary);
+      'Other', Icons.category_rounded, Color(0xFFA5B0D6)); // light slate gray
 
   // List of all expense categories
   static const List<ExpenseCategory> all = [

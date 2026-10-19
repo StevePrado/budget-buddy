@@ -45,15 +45,21 @@ class AuthService {
       case 'email-already-in-use':
         return 'An account with this email already exists.';
       case 'weak-password':
-        return 'Password must be at least 6 characters.';
+        return 'Password is too weak. Please choose a stronger password.';
       case 'invalid-email':
         return 'Please enter a valid email address.';
       case 'too-many-requests':
-        return 'Too many attempts. Please wait and try again.';
+        return 'Too many attempts. Please wait a few moments and try again.';
+      case 'network-request-failed':
+        return 'Network error. Please check your internet connection and try again.';
+      case 'user-disabled':
+        return 'This user account has been disabled.';
       case 'invalid-credential':
         return 'Invalid email or password. Please check and try again.';
+      case 'channel-error':
+        return 'Please fill in both email and password fields.';
       default:
-        return e.message ?? 'An error occurred. Please try again.';
+        return e.message ?? 'An authentication error occurred. Please try again.';
     }
   }
 }

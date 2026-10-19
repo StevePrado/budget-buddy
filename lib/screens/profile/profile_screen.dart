@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/confirm_dialog.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -67,12 +68,8 @@ class ProfileScreen extends StatelessWidget {
                   _infoTile(
                     Icons.verified_user_outlined,
                     'Account Status',
-                    user?.emailVerified == true
-                        ? 'Verified'
-                        : 'Not Verified',
-                    valueColor: user?.emailVerified == true
-                        ? AppColors.success
-                        : AppColors.warning,
+                    'Active',
+                    valueColor: AppColors.success,
                   ),
                 ],
               ),
@@ -104,24 +101,13 @@ class ProfileScreen extends StatelessWidget {
                   backgroundColor: AppColors.danger,
                 ),
                 onPressed: () async {
-                  final confirmed = await showDialog<bool>(
+                  final confirmed = await showAppConfirmDialog(
                     context: context,
-                    builder: (_) => AlertDialog(
-                      title: const Text('Log Out'),
-                      content: const Text(
-                          'Are you sure you want to log out of BudgetBuddy?'),
-                      actions: [
-                        TextButton(
-                            onPressed: () => Navigator.pop(context, false),
-                            child: const Text('Cancel')),
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.danger),
-                          onPressed: () => Navigator.pop(context, true),
-                          child: const Text('Log Out'),
-                        ),
-                      ],
-                    ),
+                    title: 'Log out?',
+                    message: 'Are you sure you want to log out?',
+                    cancelText: 'Cancel',
+                    confirmText: 'Log Out',
+                    confirmColor: AppColors.danger,
                   );
                   if (confirmed == true) {
                     await authService.logout();

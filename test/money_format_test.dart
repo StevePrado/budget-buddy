@@ -11,6 +11,13 @@ void main() {
       expect(formatPeso(-50), '-₱50.00');
     });
 
+    test('formatSpent formats spending with negative sign and comma formatting', () {
+      expect(formatSpent(35000), '-₱35,000.00');
+      expect(formatSpent(1250), '-₱1,250.00');
+      expect(formatSpent(0), '-₱0.00');
+      expect(formatSpent(-1250), '-₱1,250.00');
+    });
+
     test('stripCommas removes commas and whitespace', () {
       expect(stripCommas('35,000.00'), '35000.00');
       expect(stripCommas('  1,234,567.89  '), '1234567.89');
