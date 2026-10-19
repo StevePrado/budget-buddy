@@ -31,8 +31,8 @@ class _MainShellState extends State<MainShell> {
         children: _screens,
       ),
 
-      // Floating Action Button to quickly add an expense from any tab
-      floatingActionButton: _currentIndex != 2
+      // Floating Action Button to quickly add an expense from the Summary tab
+      floatingActionButton: _currentIndex == 0
           ? FloatingActionButton(
               onPressed: () => Navigator.push(
                 context,

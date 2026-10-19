@@ -7,6 +7,7 @@ import '../../constants/expense_categories.dart';
 import '../../models/expense_model.dart';
 import '../../services/expense_service.dart';
 import '../../theme/app_colors.dart';
+import '../../utils/money_format.dart';
 
 class AddEditExpenseScreen extends StatefulWidget {
   final ExpenseModel? expense; // null = Add mode, non-null = Edit mode
@@ -38,7 +39,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
     if (_isEditing) {
       final e = widget.expense!;
       _nameController.text = e.name;
-      _amountController.text = e.amount.toStringAsFixed(2);
+      _amountController.text = formatAmountForInput(e.amount);
       _notesController.text = e.notes;
       _selectedCategory = e.category;
       _selectedDate = e.date;
@@ -57,7 +58,10 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
   // Pick receipt photo from gallery or camera
   Future<void> _pickImage(ImageSource source) async {
     final picked = await _imagePicker.pickImage(
-        source: source, imageQuality: 80, maxWidth: 1080);
+      source: source,
+      imageQuality: 80,
+      maxWidth: 1080,
+    );
     if (picked == null) return;
     final savedPath = await _expenseService.saveReceiptLocally(picked.path);
     if (savedPath != null) {
@@ -70,32 +74,41 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
       context: context,
       backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (_) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const SizedBox(height: 8),
             Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                    color: AppColors.border,
-                    borderRadius: BorderRadius.circular(4))),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
             const SizedBox(height: 16),
             ListTile(
               leading: const Icon(Icons.camera_alt_rounded,
                   color: AppColors.primary),
-              title: const Text('Take a Photo'),
+              title: const Text(
+                'Take a Photo',
+                style: TextStyle(color: AppColors.textPrimary),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 _pickImage(ImageSource.camera);
               },
             ),
             ListTile(
-              leading:
-                  const Icon(Icons.photo_library_rounded, color: AppColors.secondary),
-              title: const Text('Choose from Gallery'),
+              leading: const Icon(Icons.photo_library_rounded,
+                  color: AppColors.secondary),
+              title: const Text(
+                'Choose from Gallery',
+                style: TextStyle(color: AppColors.textPrimary),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 _pickImage(ImageSource.gallery);
@@ -105,7 +118,10 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
               ListTile(
                 leading:
                     const Icon(Icons.delete_outline, color: AppColors.danger),
-                title: const Text('Remove Receipt'),
+                title: const Text(
+                  'Remove Receipt',
+                  style: TextStyle(color: AppColors.danger),
+                ),
                 onTap: () {
                   Navigator.pop(context);
                   setState(() => _receiptPath = null);
@@ -123,11 +139,13 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
       context: context,
       initialDate: _selectedDate,
       firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
       builder: (context, child) => Theme(
         data: Theme.of(context).copyWith(
           colorScheme: Theme.of(context).colorScheme.copyWith(
                 primary: AppColors.primary,
+                surface: AppColors.surface,
+                onSurface: AppColors.textPrimary,
               ),
         ),
         child: child!,
@@ -140,11 +158,16 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSaving = true);
     try {
+      final parsedAmount = parsePeso(_amountController.text);
+      if (parsedAmount == null || parsedAmount <= 0) {
+        throw Exception('Please enter a valid amount.');
+      }
+
       final expense = ExpenseModel(
         id: _isEditing ? widget.expense!.id : '',
         userId: _expenseService.currentUserId,
         name: _nameController.text.trim(),
-        amount: double.parse(_amountController.text.trim()),
+        amount: parsedAmount,
         category: _selectedCategory,
         date: _selectedDate,
         notes: _notesController.text.trim(),
@@ -172,8 +195,9 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Error: $e'),
-              backgroundColor: AppColors.danger),
+            content: Text('Error: $e'),
+            backgroundColor: AppColors.danger,
+          ),
         );
       }
     } finally {
@@ -188,166 +212,213 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
         title: Text(_isEditing ? 'Edit Expense' : 'Add Expense'),
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Expense Name
-              TextFormField(
-                controller: _nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Expense Name',
-                  prefixIcon:
-                      Icon(Icons.label_outline, color: AppColors.textSecondary),
-                ),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Enter expense name' : null,
-              ),
-              const SizedBox(height: 14),
-
-              // Amount
-              TextFormField(
-                controller: _amountController,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(
-                  labelText: 'Amount (₱)',
-                  prefixIcon: Icon(Icons.attach_money_rounded,
-                      color: AppColors.textSecondary),
-                ),
-                validator: (v) {
-                  if (v == null || v.trim().isEmpty) return 'Enter amount';
-                  final parsed = double.tryParse(v.trim());
-                  if (parsed == null || parsed <= 0) {
-                    return 'Enter a valid positive amount';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 14),
-
-              // Category Dropdown
-              DropdownButtonFormField<String>(
-                initialValue: _selectedCategory,
-                decoration: const InputDecoration(
-                  labelText: 'Category',
-                  prefixIcon: Icon(Icons.category_outlined,
-                      color: AppColors.textSecondary),
-                ),
-                dropdownColor: AppColors.surface,
-                items: ExpenseCategories.all
-                    .map((cat) => DropdownMenuItem(
-                          value: cat.name,
-                          child: Row(
-                            children: [
-                              Icon(cat.icon, color: cat.color, size: 18),
-                              const SizedBox(width: 10),
-                              Text(cat.name),
-                            ],
-                          ),
-                        ))
-                    .toList(),
-                onChanged: (v) {
-                  if (v != null) setState(() => _selectedCategory = v);
-                },
-              ),
-              const SizedBox(height: 14),
-
-              // Date Picker
-              InkWell(
-                onTap: _pickDate,
-                borderRadius: BorderRadius.circular(16),
-                child: InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: 'Date',
-                    prefixIcon: Icon(Icons.calendar_today_outlined,
-                        color: AppColors.textSecondary),
-                  ),
-                  child: Text(
-                    DateFormat('MMMM dd, yyyy').format(_selectedDate),
-                    style: const TextStyle(color: AppColors.textPrimary),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-
-              // Notes
-              TextFormField(
-                controller: _notesController,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: 'Notes (optional)',
-                  prefixIcon: Icon(Icons.notes_outlined,
-                      color: AppColors.textSecondary),
-                  alignLabelWithHint: true,
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // Receipt Section
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text(
-                    'Receipt Photo',
-                    style: TextStyle(
+                  // Expense Name
+                  TextFormField(
+                    controller: _nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Expense Name',
+                      prefixIcon: Icon(
+                        Icons.label_outline,
                         color: AppColors.textSecondary,
-                        fontWeight: FontWeight.w600),
-                  ),
-                  TextButton.icon(
-                    onPressed: _showImageSourceSheet,
-                    icon: Icon(
-                      _receiptPath != null
-                          ? Icons.edit_outlined
-                          : Icons.add_a_photo_outlined,
-                      size: 18,
+                      ),
                     ),
-                    label: Text(_receiptPath != null ? 'Change' : 'Add Photo'),
+                    validator: (v) =>
+                        (v == null || v.trim().isEmpty) ? 'Enter expense name' : null,
                   ),
-                ],
-              ),
-              if (_receiptPath != null) ...[
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: (!kIsWeb && File(_receiptPath!).existsSync())
-                      ? Image.file(
-                          File(_receiptPath!),
-                          height: 180,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                        )
-                      : Container(
-                          height: 80,
-                          color: AppColors.surfaceHigh,
-                          alignment: Alignment.center,
-                          child: Text(
-                            kIsWeb
-                                ? 'Receipt stored locally (Mobile feature)'
-                                : 'Receipt file not found',
-                            style: const TextStyle(color: AppColors.textMuted),
+                  const SizedBox(height: 14),
+
+                  // A1: Amount field with peso prefix and comma formatter
+                  TextFormField(
+                    controller: _amountController,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: const [CommaNumberInputFormatter()],
+                    decoration: const InputDecoration(
+                      labelText: 'Amount (₱)',
+                      prefixIcon: Padding(
+                        padding: EdgeInsets.all(14),
+                        child: Text(
+                          '₱',
+                          style: TextStyle(
+                            fontSize: 20,
+                            color: AppColors.textSecondary,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                ),
-              ],
-              const SizedBox(height: 28),
+                      ),
+                    ),
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) return 'Enter amount';
+                      final parsed = parsePeso(v);
+                      if (parsed == null || parsed <= 0) {
+                        return 'Enter a valid positive amount';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 14),
 
-              // Save Button
-              ElevatedButton(
-                onPressed: _isSaving ? null : _save,
-                child: _isSaving
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                            color: Colors.white, strokeWidth: 2))
-                    : Text(_isEditing ? 'Save Changes' : 'Add Expense'),
+                  // Category Dropdown
+                  DropdownButtonFormField<String>(
+                    initialValue: _selectedCategory,
+                    decoration: const InputDecoration(
+                      labelText: 'Category',
+                      prefixIcon: Icon(
+                        Icons.category_outlined,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    dropdownColor: AppColors.surface,
+                    items: ExpenseCategories.all
+                        .map((cat) => DropdownMenuItem(
+                              value: cat.name,
+                              child: Row(
+                                children: [
+                                  Icon(cat.icon, color: cat.color, size: 18),
+                                  const SizedBox(width: 10),
+                                  Text(
+                                    cat.name,
+                                    style: const TextStyle(
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) setState(() => _selectedCategory = v);
+                    },
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Date Picker
+                  InkWell(
+                    onTap: _pickDate,
+                    borderRadius: BorderRadius.circular(16),
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Date',
+                        prefixIcon: Icon(
+                          Icons.calendar_today_outlined,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      child: Text(
+                        DateFormat('MMMM dd, yyyy').format(_selectedDate),
+                        style: const TextStyle(color: AppColors.textPrimary),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // A2: Notes field with top-aligned prefix icon and multiline support
+                  TextFormField(
+                    controller: _notesController,
+                    minLines: 3,
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                      labelText: 'Notes (optional)',
+                      alignLabelWithHint: true,
+                      prefixIcon: Align(
+                        alignment: Alignment.topCenter,
+                        widthFactor: 1,
+                        heightFactor: 1,
+                        child: Padding(
+                          padding: EdgeInsets.only(top: 14),
+                          child: Icon(
+                            Icons.notes_outlined,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Receipt Section
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Receipt Photo',
+                        style: TextStyle(
+                          color: AppColors.textSecondary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: _showImageSourceSheet,
+                        icon: Icon(
+                          _receiptPath != null
+                              ? Icons.edit_outlined
+                              : Icons.add_a_photo_outlined,
+                          size: 18,
+                        ),
+                        label: Text(_receiptPath != null ? 'Change' : 'Add Photo'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppColors.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_receiptPath != null) ...[
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: (!kIsWeb && File(_receiptPath!).existsSync())
+                          ? Image.file(
+                              File(_receiptPath!),
+                              height: 180,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                            )
+                          : Container(
+                              height: 80,
+                              color: AppColors.surfaceHigh,
+                              alignment: Alignment.center,
+                              child: Text(
+                                kIsWeb
+                                    ? 'Receipt stored locally (Mobile feature)'
+                                    : 'Receipt file not found',
+                                style: const TextStyle(color: AppColors.textMuted),
+                              ),
+                            ),
+                    ),
+                  ],
+                  const SizedBox(height: 28),
+
+                  // Save Button
+                  ElevatedButton(
+                    onPressed: _isSaving ? null : _save,
+                    child: _isSaving
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : Text(
+                            _isEditing ? 'Save Changes' : 'Add Expense',
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
               ),
-              const SizedBox(height: 12),
-            ],
+            ),
           ),
         ),
       ),
