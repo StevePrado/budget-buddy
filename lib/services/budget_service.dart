@@ -1,160 +1,111 @@
-import 'dart:async';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/budget_model.dart';
 
+/// How much the student has spent today, this week and this month.
+class PeriodSpending {
+  const PeriodSpending({
+    required this.daily,
+    required this.weekly,
+    required this.monthly,
+  });
+
+  static const zero = PeriodSpending(daily: 0, weekly: 0, monthly: 0);
+
+  final double daily;
+  final double weekly;
+  final double monthly;
+
+  double forPeriod(String period) {
+    switch (period) {
+      case 'Daily':
+        return daily;
+      case 'Weekly':
+        return weekly;
+      default:
+        return monthly;
+    }
+  }
+}
+
 class BudgetService {
-  FirebaseFirestore get _firestore => FirebaseFirestore.instance;
-  FirebaseAuth get _auth => FirebaseAuth.instance;
-  final StreamController<BudgetModel> _localBudgetUpdates =
-      StreamController<BudgetModel>.broadcast();
-  BudgetModel _localBudget = BudgetModel(
-    userId: 'demo_student_uid',
-    dailyBudget: 0,
-    weeklyBudget: 0,
-    monthlyBudget: 0,
-  );
+  FirebaseFirestore get _db => FirebaseFirestore.instance;
 
-  bool get isAuthenticated {
-    try {
-      return _auth.currentUser != null;
-    } catch (_) {
-      return false;
-    }
-  }
+  String get currentUserId =>
+      FirebaseAuth.instance.currentUser?.uid ?? 'demo_student_uid';
 
-  void dispose() {
-    _localBudgetUpdates.close();
-  }
+  // Budget limits: users/{uid}/settings/budget
+  DocumentReference<Map<String, dynamic>> get _budgetRef =>
+      _db.collection('users').doc(currentUserId).collection('settings').doc('budget');
 
-  // Uses the logged-in user's UID, or a fallback ID for testing/offline preview
-  String get currentUserId {
-    try {
-      return _auth.currentUser?.uid ?? 'demo_student_uid';
-    } catch (_) {
-      return 'demo_student_uid';
-    }
-  }
+  // Expenses written by the Expenses module: users/{uid}/expenses
+  CollectionReference<Map<String, dynamic>> get _expensesRef =>
+      _db.collection('users').doc(currentUserId).collection('expenses');
 
-  // 1. Stream the student's budget document in real time
+  /// Live budget limits for the signed-in user.
   Stream<BudgetModel> streamUserBudget() {
-    if (!isAuthenticated) {
-      return Stream<BudgetModel>.multi((controller) {
-        final subscription = _localBudgetUpdates.stream.listen(
-          controller.add,
-          onError: (Object error, StackTrace stackTrace) {
-            controller.addError(error, stackTrace);
-          },
-        );
-        controller.add(_localBudget);
-        controller.onCancel = subscription.cancel;
-      });
-    }
-
     final uid = currentUserId;
-    try {
-      return _firestore.collection('budgets').doc(uid).snapshots().map((doc) {
-        return BudgetModel.fromFirestore(doc, uid);
-      });
-    } catch (_) {
-      return Stream.value(
-        BudgetModel(
-          userId: uid,
-          dailyBudget: 0,
-          weeklyBudget: 0,
-          monthlyBudget: 0,
-        ),
-      );
-    }
+    return _budgetRef
+        .snapshots()
+        .map((doc) => BudgetModel.fromFirestore(doc, uid));
   }
 
-  // 2. Save or update Daily, Weekly, and Monthly budgets in Firestore
+  /// Live spending totals, worked out from the expense documents.
+  /// Weeks start on Monday; expenses dated in the future are ignored.
+  Stream<PeriodSpending> streamSpending() {
+    return _expensesRef.snapshots().map((snapshot) {
+      final now = DateTime.now();
+      final todayStart = DateTime(now.year, now.month, now.day);
+      final tomorrowStart = DateTime(now.year, now.month, now.day + 1);
+      final weekStart = todayStart.subtract(Duration(days: now.weekday - 1));
+      final monthStart = DateTime(now.year, now.month, 1);
+
+      double day = 0, week = 0, month = 0;
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final rawAmount = data['amount'];
+        final amount = rawAmount is num
+            ? rawAmount.toDouble()
+            : double.tryParse('$rawAmount') ?? 0.0;
+        final rawDate = data['date'];
+        if (rawDate is! Timestamp) continue;
+        final date = rawDate.toDate();
+        if (!date.isBefore(tomorrowStart)) continue;
+
+        if (!date.isBefore(monthStart)) month += amount;
+        if (!date.isBefore(weekStart)) week += amount;
+        if (!date.isBefore(todayStart)) day += amount;
+      }
+      return PeriodSpending(daily: day, weekly: week, monthly: month);
+    });
+  }
+
+  /// Saves all three limits. Errors are thrown so the screen can show them.
   Future<void> saveBudget({
     required double dailyBudget,
     required double weeklyBudget,
     required double monthlyBudget,
     required String selectedPeriod,
-  }) async {
-    if (!isAuthenticated) {
-      _localBudget = BudgetModel(
-        userId: currentUserId,
-        dailyBudget: dailyBudget,
-        weeklyBudget: weeklyBudget,
-        monthlyBudget: monthlyBudget,
-        selectedPeriod: selectedPeriod,
-      );
-      _localBudgetUpdates.add(_localBudget);
-      return;
-    }
-
-    final uid = currentUserId;
+  }) {
     final budget = BudgetModel(
-      userId: uid,
+      userId: currentUserId,
       dailyBudget: dailyBudget,
       weeklyBudget: weeklyBudget,
       monthlyBudget: monthlyBudget,
       selectedPeriod: selectedPeriod,
     );
-
-    await _firestore
-        .collection('budgets')
-        .doc(uid)
-        .set(budget.toMap(), SetOptions(merge: true));
+    return _budgetRef.set(budget.toMap(), SetOptions(merge: true));
   }
 
-  // 3. Update only the active budget period ('Daily', 'Weekly', 'Monthly')
-  Future<void> updateSelectedPeriod(String period) async {
-    if (!isAuthenticated) {
-      _localBudget = BudgetModel(
-        userId: currentUserId,
-        dailyBudget: _localBudget.dailyBudget,
-        weeklyBudget: _localBudget.weeklyBudget,
-        monthlyBudget: _localBudget.monthlyBudget,
-        selectedPeriod: period,
-      );
-      _localBudgetUpdates.add(_localBudget);
-      return;
-    }
-
-    final uid = currentUserId;
-    await _firestore.collection('budgets').doc(uid).set(
+  /// Remembers which period the student last looked at.
+  Future<void> updateSelectedPeriod(String period) {
+    return _budgetRef.set(
       {
-        'userId': uid,
+        'userId': currentUserId,
         'selectedPeriod': period,
         'updatedAt': FieldValue.serverTimestamp(),
       },
       SetOptions(merge: true),
     );
-  }
-
-  // 4. Stream Total Expenses from the 'expenses' collection for this user
-  Stream<double> streamTotalExpenses() {
-    if (!isAuthenticated) {
-      return Stream.value(0.0);
-    }
-
-    final uid = currentUserId;
-    try {
-      return _firestore
-          .collection('expenses')
-          .where('userId', isEqualTo: uid)
-          .snapshots()
-          .map((snapshot) {
-        double total = 0.0;
-        for (var doc in snapshot.docs) {
-          final data = doc.data();
-          final amount = data['amount'];
-          if (amount is num) {
-            total += amount.toDouble();
-          } else if (amount is String) {
-            total += double.tryParse(amount) ?? 0.0;
-          }
-        }
-        return total;
-      });
-    } catch (_) {
-      return Stream.value(0.0);
-    }
   }
 }

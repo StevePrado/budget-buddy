@@ -1,6 +1,26 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
 import '../../models/budget_model.dart';
 import '../../services/budget_service.dart';
+import '../../theme/app_colors.dart';
+import '../../utils/peso.dart';
+
+const _periods = ['Daily', 'Weekly', 'Monthly'];
+
+String _friendlyError(Object? error) {
+  final text = '$error';
+  if (text.contains('permission-denied')) {
+    return 'Firestore blocked this request. Check that your security rules '
+        'allow users/{uid}/...';
+  }
+  if (text.contains('unavailable') || text.contains('network')) {
+    return 'Could not reach Firestore. Check your internet connection.';
+  }
+  return 'Something went wrong: $text';
+}
 
 class BudgetScreen extends StatefulWidget {
   const BudgetScreen({super.key});
@@ -10,481 +30,700 @@ class BudgetScreen extends StatefulWidget {
 }
 
 class _BudgetScreenState extends State<BudgetScreen> {
-  final BudgetService _budgetService = BudgetService();
+  final _service = BudgetService();
 
-  @override
-  void dispose() {
-    _budgetService.dispose();
-    super.dispose();
+  late Stream<BudgetModel> _budgetStream = _service.streamUserBudget();
+  late Stream<PeriodSpending> _spendingStream = _service.streamSpending();
+
+  // Period the student picked on this screen (null = use the saved one)
+  String? _pickedPeriod;
+
+  void _reload() {
+    setState(() {
+      _budgetStream = _service.streamUserBudget();
+      _spendingStream = _service.streamSpending();
+    });
   }
 
-  // Open a Dialog with a validated Form to edit Daily, Weekly, and Monthly budgets
-  void _showEditBudgetDialog(BudgetModel currentBudget) {
-    final formKey = GlobalKey<FormState>();
-    final dailyController = TextEditingController(
-      text: currentBudget.dailyBudget > 0
-          ? currentBudget.dailyBudget.toStringAsFixed(2)
-          : '',
-    );
-    final weeklyController = TextEditingController(
-      text: currentBudget.weeklyBudget > 0
-          ? currentBudget.weeklyBudget.toStringAsFixed(2)
-          : '',
-    );
-    final monthlyController = TextEditingController(
-      text: currentBudget.monthlyBudget > 0
-          ? currentBudget.monthlyBudget.toStringAsFixed(2)
-          : '',
-    );
+  double _limitFor(BudgetModel budget, String period) {
+    switch (period) {
+      case 'Daily':
+        return budget.dailyBudget;
+      case 'Weekly':
+        return budget.weeklyBudget;
+      default:
+        return budget.monthlyBudget;
+    }
+  }
 
-    String dialogSelectedPeriod = currentBudget.selectedPeriod;
-    bool isSaving = false;
+  Future<void> _pickPeriod(String period) async {
+    setState(() => _pickedPeriod = period);
+    try {
+      await _service.updateSelectedPeriod(period);
+    } catch (_) {
+      // Not critical: the choice still works for this session.
+    }
+  }
 
-    showDialog(
+  Future<void> _openLimitsSheet(BudgetModel current) async {
+    final saved = await showModalBottomSheet<bool>(
       context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Set Student Budget'),
-              content: SingleChildScrollView(
-                child: Form(
-                  key: formKey,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        'Enter your allowance limits below. Choose which period acts as your primary Total Budget.',
-                        style: TextStyle(fontSize: 13, color: Colors.black54),
-                      ),
-                      const SizedBox(height: 16),
-                      DropdownButtonFormField<String>(
-                        initialValue: dialogSelectedPeriod,
-                        decoration: const InputDecoration(
-                          labelText: 'Primary Summary Period',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.calendar_today),
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _LimitsSheet(
+        initial: current,
+        onSave: (daily, weekly, monthly) => _service.saveBudget(
+          dailyBudget: daily,
+          weeklyBudget: weekly,
+          monthlyBudget: monthly,
+          selectedPeriod: _pickedPeriod ?? current.selectedPeriod,
+        ),
+      ),
+    );
+
+    if (saved == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Limits updated')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<BudgetModel>(
+      stream: _budgetStream,
+      builder: (context, budgetSnap) {
+        if (budgetSnap.hasError) {
+          return _ErrorView(
+            message: _friendlyError(budgetSnap.error),
+            onRetry: _reload,
+          );
+        }
+        if (!budgetSnap.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final budget = budgetSnap.data!;
+        final period = _pickedPeriod ?? budget.selectedPeriod;
+
+        return StreamBuilder<PeriodSpending>(
+          stream: _spendingStream,
+          builder: (context, spendSnap) {
+            final spending = spendSnap.data ?? PeriodSpending.zero;
+
+            return Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      child: SegmentedButton<String>(
+                        showSelectedIcon: false,
+                        style: SegmentedButton.styleFrom(
+                          backgroundColor: AppColors.surface,
+                          foregroundColor: AppColors.textSecondary,
+                          selectedBackgroundColor: AppColors.primary,
+                          selectedForegroundColor: Colors.white,
+                          side: const BorderSide(color: AppColors.border),
                         ),
-                        items: const [
-                          DropdownMenuItem(value: 'Daily', child: Text('Daily Budget')),
-                          DropdownMenuItem(value: 'Weekly', child: Text('Weekly Budget')),
-                          DropdownMenuItem(value: 'Monthly', child: Text('Monthly Budget')),
+                        segments: [
+                          for (final p in _periods)
+                            ButtonSegment<String>(value: p, label: Text(p)),
                         ],
-                        onChanged: (value) {
-                          if (value != null) {
-                            setDialogState(() => dialogSelectedPeriod = value);
-                          }
-                        },
+                        selected: {period},
+                        onSelectionChanged: (set) => _pickPeriod(set.first),
                       ),
-                      const SizedBox(height: 12),
-                      _buildAmountField(
-                        controller: dailyController,
-                        label: 'Daily Budget (₱)',
-                        icon: Icons.today,
+                    ),
+                    const SizedBox(height: 16),
+                    _SummaryCard(
+                      period: period,
+                      limit: _limitFor(budget, period),
+                      spent: spending.forPeriod(period),
+                      onSetLimits: () => _openLimitsSheet(budget),
+                    ),
+                    const SizedBox(height: 28),
+                    Row(
+                      children: [
+                        Text(
+                          'Your limits',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const Spacer(),
+                        TextButton.icon(
+                          onPressed: () => _openLimitsSheet(budget),
+                          icon: const Icon(Icons.tune_rounded, size: 18),
+                          label: const Text('Edit limits'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    for (final p in _periods)
+                      _LimitRow(
+                        period: p,
+                        limit: _limitFor(budget, p),
+                        spent: spending.forPeriod(p),
+                        highlighted: p == period,
+                        onTap: () => _openLimitsSheet(budget),
                       ),
-                      const SizedBox(height: 12),
-                      _buildAmountField(
-                        controller: weeklyController,
-                        label: 'Weekly Budget (₱)',
-                        icon: Icons.date_range,
-                      ),
-                      const SizedBox(height: 12),
-                      _buildAmountField(
-                        controller: monthlyController,
-                        label: 'Monthly Budget (₱)',
-                        icon: Icons.calendar_month,
-                      ),
-                    ],
-                  ),
+                  ],
                 ),
               ),
-              actions: [
-                TextButton(
-                  onPressed: isSaving ? null : () => Navigator.pop(context),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: isSaving
-                      ? null
-                      : () async {
-                    if (formKey.currentState!.validate()) {
-                      setDialogState(() => isSaving = true);
-                      try {
-                        await _budgetService.saveBudget(
-                          dailyBudget: double.parse(dailyController.text.trim()),
-                          weeklyBudget: double.parse(weeklyController.text.trim()),
-                          monthlyBudget: double.parse(monthlyController.text.trim()),
-                          selectedPeriod: dialogSelectedPeriod,
-                        );
-                        if (context.mounted) {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                _budgetService.isAuthenticated
-                                    ? 'Budget saved successfully!'
-                                    : 'Budget saved for this session.',
-                              ),
-                              backgroundColor: Colors.green,
-                            ),
-                          );
-                        }
-                      } catch (e) {
-                        setDialogState(() => isSaving = false);
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Error saving budget: $e'),
-                              backgroundColor: Colors.red,
-                            ),
-                          );
-                        }
-                      }
-                    }
-                  },
-                  child: isSaving
-                      ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                      : const Text('Save Budget'),
-                ),
-              ],
             );
           },
         );
       },
     );
   }
+}
 
-  Widget _buildAmountField({
-    required TextEditingController controller,
-    required String label,
-    required IconData icon,
-  }) {
-    return TextFormField(
-      controller: controller,
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      decoration: InputDecoration(
-        labelText: label,
-        border: const OutlineInputBorder(),
-        prefixIcon: Icon(icon),
-      ),
-      validator: (value) {
-        if (value == null || value.trim().isEmpty) {
-          return 'Please enter an amount';
-        }
-        final parsed = double.tryParse(value.trim());
-        if (parsed == null || parsed < 0) {
-          return 'Enter a valid non-negative number';
-        }
-        return null;
-      },
-    );
+// ---------------------------------------------------------------------------
+// Summary card with a progress ring
+// ---------------------------------------------------------------------------
+
+class _SummaryCard extends StatelessWidget {
+  const _SummaryCard({
+    required this.period,
+    required this.limit,
+    required this.spent,
+    required this.onSetLimits,
+  });
+
+  final String period;
+  final double limit;
+  final double spent;
+  final VoidCallback onSetLimits;
+
+  int _daysLeft() {
+    final now = DateTime.now();
+    switch (period) {
+      case 'Weekly':
+        return 8 - now.weekday; // Mon=7 days left ... Sun=1
+      case 'Monthly':
+        final lastDay = DateTime(now.year, now.month + 1, 0).day;
+        return lastDay - now.day + 1;
+      default:
+        return 1;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: StreamBuilder<BudgetModel>(
-        stream: _budgetService.streamUserBudget(),
-        builder: (context, budgetSnapshot) {
-          if (budgetSnapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+    final hasLimit = limit > 0;
+    final remaining = limit - spent;
+    final ratio = hasLimit ? spent / limit : 0.0;
+    final over = hasLimit && remaining < 0;
 
-          if (budgetSnapshot.hasError) {
-            return Center(
-              child: Text('Error loading budget: ${budgetSnapshot.error}'),
-            );
-          }
+    final Color accent;
+    final String status;
+    if (!hasLimit) {
+      accent = AppColors.textMuted;
+      status = 'No limit set';
+    } else if (over) {
+      accent = AppColors.danger;
+      status = 'Over budget';
+    } else if (ratio >= 0.8) {
+      accent = AppColors.warning;
+      status = 'Almost at your limit';
+    } else {
+      accent = AppColors.success;
+      status = 'On track';
+    }
 
-          final budget = budgetSnapshot.data ??
-              BudgetModel(
-                userId: _budgetService.currentUserId,
-                dailyBudget: 0,
-                weeklyBudget: 0,
-                monthlyBudget: 0,
-              );
+    String? paceHint;
+    if (hasLimit && !over && period != 'Daily') {
+      final perDay = remaining / _daysLeft();
+      final unit = period == 'Weekly' ? 'week' : 'month';
+      paceHint = 'About ${peso(perDay)} a day to last the rest of the $unit';
+    }
 
-          return StreamBuilder<double>(
-            stream: _budgetService.streamTotalExpenses(),
-            builder: (context, expenseSnapshot) {
-              final totalExpenses = expenseSnapshot.data ?? 0.0;
-              final totalBudget = budget.activeTotalBudget;
-              final remainingBudget = totalBudget - totalExpenses;
-              final isOverBudget = remainingBudget < 0;
-
-              final progress = totalBudget > 0
-                  ? (totalExpenses / totalBudget).clamp(0.0, 1.0)
-                  : 0.0;
-
-              return SingleChildScrollView(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Period Selector Chips (Daily / Weekly / Monthly)
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: ['Daily', 'Weekly', 'Monthly'].map((period) {
-                        final isSelected = budget.selectedPeriod == period;
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                          child: ChoiceChip(
-                            label: Text('$period View'),
-                            selected: isSelected,
-                            onSelected: (selected) async {
-                              if (!selected) return;
-                              try {
-                                await _budgetService.updateSelectedPeriod(period);
-                              } catch (e) {
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        'Error updating budget period: $e',
-                                      ),
-                                      backgroundColor: Colors.red,
-                                    ),
-                                  );
-                                }
-                              }
-                            },
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                    const SizedBox(height: 16),
-                    if (!_budgetService.isAuthenticated) ...[
-                      const Card(
-                        child: Padding(
-                          padding: EdgeInsets.all(12),
-                          child: Row(
-                            children: [
-                              Icon(Icons.info_outline, size: 20),
-                              SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  'Not signed in. Budgets are available for this session only and are not synced.',
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                    ],
-
-                    // 1. BUDGET SUMMARY CARD (Total Budget, Total Expenses, Remaining Budget)
-                    Card(
-                      elevation: 3,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(20.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  'Budget Summary (${budget.selectedPeriod})',
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                Icon(
-                                  isOverBudget
-                                      ? Icons.warning_amber_rounded
-                                      : Icons.account_balance_wallet,
-                                  color: isOverBudget ? Colors.red : Colors.teal,
-                                ),
-                              ],
-                            ),
-                            const Divider(height: 24),
-                            _buildSummaryRow(
-                              label: 'Total Budget',
-                              amount: totalBudget,
-                              color: Colors.blueGrey.shade800,
-                              isBold: true,
-                            ),
-                            const SizedBox(height: 10),
-                            _buildSummaryRow(
-                              label: 'Total Expenses',
-                              amount: totalExpenses,
-                              color: Colors.orange.shade800,
-                            ),
-                            const Divider(height: 24),
-                            _buildSummaryRow(
-                              label: 'Remaining Budget',
-                              amount: remainingBudget,
-                              color: isOverBudget ? Colors.red : Colors.green.shade700,
-                              isBold: true,
-                              fontSize: 20,
-                            ),
-                            const SizedBox(height: 16),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: LinearProgressIndicator(
-                                value: progress,
-                                minHeight: 10,
-                                backgroundColor: Colors.grey.shade200,
-                                color: isOverBudget
-                                    ? Colors.red
-                                    : (progress > 0.8 ? Colors.orange : Colors.teal),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              totalBudget == 0
-                                  ? 'Tap "Edit Budgets" below to set your allowance.'
-                                  : isOverBudget
-                                  ? 'You have exceeded your ${budget.selectedPeriod.toLowerCase()} budget!'
-                                  : '${(progress * 100).toStringAsFixed(1)}% of ${budget.selectedPeriod.toLowerCase()} budget used',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: isOverBudget ? Colors.red : Colors.black54,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-
-                    // 2. STUDENT BUDGET TIERS (Daily, Weekly, Monthly Breakdown)
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Configured Allowances',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        TextButton.icon(
-                          onPressed: () => _showEditBudgetDialog(budget),
-                          icon: const Icon(Icons.edit, size: 18),
-                          label: const Text('Edit Budgets'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    _buildBudgetTierTile(
-                      title: 'Daily Budget',
-                      subtitle: 'Recommended daily spending limit',
-                      amount: budget.dailyBudget,
-                      icon: Icons.today,
-                      isActive: budget.selectedPeriod == 'Daily',
-                    ),
-                    _buildBudgetTierTile(
-                      title: 'Weekly Budget',
-                      subtitle: '7-day allowance allocation',
-                      amount: budget.weeklyBudget,
-                      icon: Icons.date_range,
-                      isActive: budget.selectedPeriod == 'Weekly',
-                    ),
-                    _buildBudgetTierTile(
-                      title: 'Monthly Budget',
-                      subtitle: 'Full month allowance allocation',
-                      amount: budget.monthlyBudget,
-                      icon: Icons.calendar_month,
-                      isActive: budget.selectedPeriod == 'Monthly',
-                    ),
-                  ],
-                ),
-              );
-            },
-          );
-        },
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.border),
       ),
-      floatingActionButton: StreamBuilder<BudgetModel>(
-        stream: _budgetService.streamUserBudget(),
-        builder: (context, snapshot) {
-          final currentBudget = snapshot.data ??
-              BudgetModel(
-                userId: _budgetService.currentUserId,
-                dailyBudget: 0,
-                weeklyBudget: 0,
-                monthlyBudget: 0,
-              );
-          return FloatingActionButton.extended(
-            onPressed: () => _showEditBudgetDialog(currentBudget),
-            icon: const Icon(Icons.calculate_outlined),
-            label: const Text('Set Budget'),
-          );
-        },
+      child: Column(
+        children: [
+          SizedBox(
+            width: 190,
+            height: 190,
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: ratio.clamp(0.0, 1.0)),
+              duration: const Duration(milliseconds: 600),
+              curve: Curves.easeOutCubic,
+              builder: (context, value, _) => CustomPaint(
+                painter: _RingPainter(
+                  progress: value,
+                  color: accent,
+                  track: AppColors.surfaceHigh,
+                ),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        over ? 'Over by' : 'Left',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        hasLimit ? peso(remaining.abs()) : '—',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800,
+                          color: over ? AppColors.danger : AppColors.textPrimary,
+                        ),
+                      ),
+                      if (hasLimit)
+                        Text(
+                          '${(ratio * 100).round()}% used',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: accent.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              status,
+              style: TextStyle(
+                color: accent,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Expanded(
+                child: _Stat(label: '$period limit', value: peso(limit)),
+              ),
+              Container(width: 1, height: 36, color: AppColors.border),
+              Expanded(
+                child: _Stat(label: 'Spent', value: peso(spent)),
+              ),
+            ],
+          ),
+          if (paceHint != null) ...[
+            const SizedBox(height: 14),
+            Text(
+              paceHint,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+          if (!hasLimit) ...[
+            const SizedBox(height: 14),
+            FilledButton(
+              onPressed: onSetLimits,
+              child: const Text('Set your limits'),
+            ),
+          ],
+        ],
       ),
     );
   }
+}
 
-  Widget _buildSummaryRow({
-    required String label,
-    required double amount,
-    required Color color,
-    bool isBold = false,
-    double fontSize = 16,
-  }) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+class _Stat extends StatelessWidget {
+  const _Stat({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
       children: [
         Text(
           label,
-          style: TextStyle(
-            fontSize: fontSize,
-            fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
-          ),
+          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
         ),
+        const SizedBox(height: 4),
         Text(
-          '₱${amount.toStringAsFixed(2)}',
-          style: TextStyle(
-            fontSize: fontSize,
-            fontWeight: isBold ? FontWeight.bold : FontWeight.w600,
-            color: color,
+          value,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textPrimary,
           ),
         ),
       ],
     );
   }
+}
 
-  Widget _buildBudgetTierTile({
-    required String title,
-    required String subtitle,
-    required double amount,
-    required IconData icon,
-    required bool isActive,
-  }) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: isActive
-            ? const BorderSide(color: Colors.teal, width: 1.5)
-            : BorderSide.none,
-      ),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: isActive ? Colors.teal.shade50 : Colors.grey.shade100,
-          child: Icon(icon, color: isActive ? Colors.teal : Colors.grey.shade700),
-        ),
-        title: Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-        subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
-        trailing: Text(
-          '₱${amount.toStringAsFixed(2)}',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: isActive ? Colors.teal.shade800 : Colors.black87,
+class _RingPainter extends CustomPainter {
+  _RingPainter({
+    required this.progress,
+    required this.color,
+    required this.track,
+  });
+
+  final double progress;
+  final Color color;
+  final Color track;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const stroke = 14.0;
+    final center = size.center(Offset.zero);
+    final radius = (math.min(size.width, size.height) - stroke) / 2;
+
+    final trackPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..color = track;
+    canvas.drawCircle(center, radius, trackPaint);
+
+    if (progress <= 0) return;
+    final arcPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round
+      ..color = color;
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      -math.pi / 2,
+      2 * math.pi * progress,
+      false,
+      arcPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_RingPainter old) =>
+      old.progress != progress || old.color != color || old.track != track;
+}
+
+// ---------------------------------------------------------------------------
+// One row per period in the "Your limits" list
+// ---------------------------------------------------------------------------
+
+class _LimitRow extends StatelessWidget {
+  const _LimitRow({
+    required this.period,
+    required this.limit,
+    required this.spent,
+    required this.highlighted,
+    required this.onTap,
+  });
+
+  final String period;
+  final double limit;
+  final double spent;
+  final bool highlighted;
+  final VoidCallback onTap;
+
+  IconData get _icon {
+    switch (period) {
+      case 'Daily':
+        return Icons.wb_sunny_outlined;
+      case 'Weekly':
+        return Icons.view_week_outlined;
+      default:
+        return Icons.calendar_month_outlined;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ratio = limit > 0 ? (spent / limit).clamp(0.0, 1.0) : 0.0;
+    final over = limit > 0 && spent > limit;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: highlighted ? AppColors.primary : AppColors.border,
+              ),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Icon(_icon, size: 20, color: AppColors.textSecondary),
+                    const SizedBox(width: 10),
+                    Text(
+                      period,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      limit > 0 ? peso(limit) : 'Not set',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: limit > 0
+                            ? AppColors.textPrimary
+                            : AppColors.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+                if (limit > 0) ...[
+                  const SizedBox(height: 10),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      value: ratio,
+                      minHeight: 6,
+                      backgroundColor: AppColors.surfaceHigh,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        over ? AppColors.danger : AppColors.primary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      '${peso(spent)} spent',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Bottom sheet for editing the three limits
+// ---------------------------------------------------------------------------
+
+class _LimitsSheet extends StatefulWidget {
+  const _LimitsSheet({required this.initial, required this.onSave});
+
+  final BudgetModel initial;
+  final Future<void> Function(double daily, double weekly, double monthly)
+      onSave;
+
+  @override
+  State<_LimitsSheet> createState() => _LimitsSheetState();
+}
+
+class _LimitsSheetState extends State<_LimitsSheet> {
+  late final _daily =
+      TextEditingController(text: plainAmount(widget.initial.dailyBudget));
+  late final _weekly =
+      TextEditingController(text: plainAmount(widget.initial.weeklyBudget));
+  late final _monthly =
+      TextEditingController(text: plainAmount(widget.initial.monthlyBudget));
+
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _daily.dispose();
+    _weekly.dispose();
+    _monthly.dispose();
+    super.dispose();
+  }
+
+  // Empty box counts as 0; text that is not a number returns null.
+  double? _read(TextEditingController controller) {
+    if (controller.text.trim().isEmpty) return 0;
+    return parseAmount(controller.text);
+  }
+
+  void _fillFromDaily() {
+    final daily = _read(_daily);
+    if (daily == null || daily <= 0) {
+      setState(() => _error = 'Type a daily amount first.');
+      return;
+    }
+    setState(() {
+      _error = null;
+      _weekly.text = plainAmount(daily * 7);
+      _monthly.text = plainAmount(daily * 30);
+    });
+  }
+
+  Future<void> _save() async {
+    final daily = _read(_daily);
+    final weekly = _read(_weekly);
+    final monthly = _read(_monthly);
+
+    if (daily == null || weekly == null || monthly == null) {
+      setState(() => _error = 'Use numbers only, for example 150 or 150.50');
+      return;
+    }
+    if (daily + weekly + monthly <= 0) {
+      setState(() => _error = 'Enter at least one limit.');
+      return;
+    }
+
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await widget.onSave(daily, weekly, monthly);
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _error = _friendlyError(e);
+        });
+      }
+    }
+  }
+
+  Widget _field(TextEditingController controller, String label) {
+    return TextField(
+      controller: controller,
+      enabled: !_saving,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
+      decoration: InputDecoration(labelText: label, prefixText: '₱ '),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        20,
+        12,
+        20,
+        20 + MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Spending limits',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'How much can you spend in each period?',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 16),
+            _field(_daily, 'Per day'),
+            const SizedBox(height: 12),
+            _field(_weekly, 'Per week'),
+            const SizedBox(height: 12),
+            _field(_monthly, 'Per month'),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: _saving ? null : _fillFromDaily,
+                child: const Text('Fill week and month from daily (×7, ×30)'),
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 4),
+              Text(_error!, style: const TextStyle(color: AppColors.danger)),
+            ],
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: _saving ? null : _save,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: _saving
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Save limits'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+
+class _ErrorView extends StatelessWidget {
+  const _ErrorView({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.cloud_off_rounded,
+                size: 40, color: AppColors.textMuted),
+            const SizedBox(height: 12),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 16),
+            OutlinedButton(onPressed: onRetry, child: const Text('Try again')),
+          ],
         ),
       ),
     );
