@@ -4,6 +4,7 @@ import '../screens/expenses/expenses_screen.dart';
 import '../screens/summary/summary_screen.dart';
 import '../screens/profile/profile_screen.dart';
 import '../screens/expenses/add_edit_expense_screen.dart';
+import '../widgets/app_drawer.dart';
 
 // Main Navigation Shell with Bottom Navigation Bar + FAB
 class MainShell extends StatefulWidget {
@@ -15,6 +16,7 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   static const List<Widget> _screens = [
     SummaryScreen(),
@@ -23,15 +25,54 @@ class _MainShellState extends State<MainShell> {
     ProfileScreen(),
   ];
 
+  void _openDrawer() => _scaffoldKey.currentState?.openDrawer();
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
+      key: _scaffoldKey,
+
+      // ── Left Drawer ──────────────────────────────────────────────
+      drawer: AppDrawer(
+        currentIndex: _currentIndex,
+        onNavigate: (index) => setState(() => _currentIndex = index),
       ),
 
-      // Floating Action Button to quickly add an expense from the Summary tab
+      // ── Body ─────────────────────────────────────────────────────
+      body: Stack(
+        children: [
+          IndexedStack(
+            index: _currentIndex,
+            children: _screens,
+          ),
+          // Hamburger button pinned top-left so every screen has access
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 8,
+            left: 12,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: _openDrawer,
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF111B3A).withValues(alpha: 0.85),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.menu_rounded,
+                    color: Color(0xFF9AA6D1),
+                    size: 22,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+
+      // ── FAB ──────────────────────────────────────────────────────
       floatingActionButton: _currentIndex == 0
           ? FloatingActionButton(
               onPressed: () => Navigator.push(
@@ -43,7 +84,7 @@ class _MainShellState extends State<MainShell> {
             )
           : null,
 
-      // Bottom Navigation Bar
+      // ── Bottom Navigation Bar ─────────────────────────────────────
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: (index) {

@@ -195,6 +195,20 @@ class _BudgetScreenState extends State<BudgetScreen> {
                                 child: const Text('Cancel'),
                               ),
                               const SizedBox(width: 8),
+                              TextButton(
+                                onPressed: isSaving
+                                    ? null
+                                    : () {
+                                        dailyController.clear();
+                                        weeklyController.clear();
+                                        monthlyController.clear();
+                                      },
+                                style: TextButton.styleFrom(
+                                  foregroundColor: AppColors.danger,
+                                ),
+                                child: const Text('Reset'),
+                              ),
+                              const SizedBox(width: 8),
                               ElevatedButton(
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: AppColors.primary,
@@ -612,6 +626,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                           icon: Icons.today_rounded,
                           accentColor: AppColors.primary,
                           isActive: _selectedViewPeriod == 'Daily',
+                          onTap: () => setState(() => _selectedViewPeriod = 'Daily'),
                         ),
                         _buildBudgetTierTile(
                           title: 'Weekly Budget',
@@ -620,6 +635,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                           icon: Icons.date_range_rounded,
                           accentColor: AppColors.secondary,
                           isActive: _selectedViewPeriod == 'Weekly',
+                          onTap: () => setState(() => _selectedViewPeriod = 'Weekly'),
                         ),
                         _buildBudgetTierTile(
                           title: 'Monthly Budget',
@@ -628,6 +644,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                           icon: Icons.calendar_month_rounded,
                           accentColor: const Color(0xFF22D3EE),
                           isActive: _selectedViewPeriod == 'Monthly',
+                          onTap: () => setState(() => _selectedViewPeriod = 'Monthly'),
                         ),
                         const SizedBox(height: 72),
                       ],
@@ -696,6 +713,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
     required IconData icon,
     required Color accentColor,
     required bool isActive,
+    required VoidCallback onTap,
   }) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -706,52 +724,63 @@ class _BudgetScreenState extends State<BudgetScreen> {
           width: isActive ? 1.5 : 1.0,
         ),
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: accentColor.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(12),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: accentColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: accentColor, size: 22),
               ),
-              child: Icon(icon, color: accentColor, size: 22),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                      color: AppColors.textPrimary,
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                        color: AppColors.textPrimary,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            Text(
-              formatPeso(amount),
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
+              Text(
+                formatPeso(amount),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
               ),
-            ),
-          ],
+              const SizedBox(width: 8),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: isActive ? AppColors.primary : AppColors.textSecondary,
+                size: 20,
+              ),
+            ],
+          ),
         ),
       ),
     );

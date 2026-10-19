@@ -17,7 +17,7 @@ class ProfileScreen extends StatelessWidget {
         title: const Text('Profile'),
         centerTitle: true,
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
@@ -90,8 +90,7 @@ class ProfileScreen extends StatelessWidget {
                 ],
               ),
             ),
-
-            const Spacer(),
+            const SizedBox(height: 32),
 
             // Logout Button
             SizedBox(
