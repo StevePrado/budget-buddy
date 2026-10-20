@@ -1,7 +1,9 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../screens/expenses/add_edit_expense_screen.dart';
+import '../screens/budget/budget_screen.dart';
 import '../services/auth_service.dart';
+import '../services/budget_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/confirm_dialog.dart';
 
@@ -137,8 +139,28 @@ class AppDrawer extends StatelessWidget {
                       icon: Icons.add_circle_outline_rounded,
                       iconColor: AppColors.success,
                       label: 'Add Expense',
-                      onTap: () {
+                      onTap: () async {
                         Navigator.pop(context); // close drawer
+                        final hasBudget = await BudgetService().hasBudget();
+                        if (!context.mounted) return;
+                        if (!hasBudget) {
+                          final confirmed = await showAppConfirmDialog(
+                            context: context,
+                            title: 'Set your budget first',
+                            message:
+                                'You need to set a budget before adding expenses.',
+                            cancelText: 'Cancel',
+                            confirmText: 'Set Budget',
+                            confirmColor: AppColors.primary,
+                          );
+                          if (confirmed == true && context.mounted) {
+                            onNavigate(2); // go to Budget tab
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              showSetBudgetDialog(context);
+                            });
+                          }
+                          return;
+                        }
                         Navigator.push(
                           context,
                           MaterialPageRoute(

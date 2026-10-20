@@ -2,9 +2,13 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 /// Standard currency formatter for Philippine Peso (₱)
-/// Example: 35000 -> ₱35,000.00
-String formatPeso(num v) =>
-    NumberFormat.currency(symbol: '₱', decimalDigits: 2).format(v);
+/// Example: 35000 -> ₱35,000.00, -150 -> -₱150.00
+String formatPeso(num v) {
+  if (v < 0) {
+    return '-₱${NumberFormat('#,##0.00').format(v.abs())}';
+  }
+  return '₱${NumberFormat('#,##0.00').format(v)}';
+}
 
 /// Formats spending amounts with a negative sign and comma formatting
 /// Example: 1250 -> -₱1,250.00
@@ -22,8 +26,8 @@ double? parsePeso(String? text) {
 }
 
 /// Formats a numeric value for text editing fields with commas and optional decimals
-String formatAmountForInput(num v) {
-  if (v == 0) return '';
+String formatAmountForInput(num v, {bool allowZero = false}) {
+  if (v == 0) return allowZero ? '0.00' : '';
   final hasDecimals = (v % 1) != 0;
   if (hasDecimals) {
     return NumberFormat('#,##0.00').format(v);

@@ -19,22 +19,39 @@ class BudgetService {
   DocumentReference<Map<String, dynamic>> get _budgetDoc =>
       _firestore.collection('users').doc(currentUserId).collection('settings').doc('budget');
 
-  // 1. Stream the student's budget document in real time
-  Stream<BudgetModel> streamUserBudget() {
+  // Check if a budget has been saved (doc exists in Firestore) (2.4 & 3.5)
+  Future<bool> hasBudget() async {
+    try {
+      final doc = await _budgetDoc.get();
+      return doc.exists && doc.data() != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // Quick fetch of user's budget if set, or null if no budget set yet (3.5)
+  Future<BudgetModel?> getBudget() async {
+    try {
+      final doc = await _budgetDoc.get();
+      if (!doc.exists || doc.data() == null) return null;
+      return BudgetModel.fromFirestore(doc, currentUserId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // 1. Stream the student's budget document in real time; emits null if no budget saved yet
+  Stream<BudgetModel?> streamUserBudget() {
     final uid = currentUserId;
     try {
       return _budgetDoc.snapshots().map((doc) {
+        if (!doc.exists || doc.data() == null) {
+          return null;
+        }
         return BudgetModel.fromFirestore(doc, uid);
       });
     } catch (_) {
-      return Stream.value(
-        BudgetModel(
-          userId: uid,
-          dailyBudget: 0,
-          weeklyBudget: 0,
-          monthlyBudget: 0,
-        ),
-      );
+      return Stream.value(null);
     }
   }
 

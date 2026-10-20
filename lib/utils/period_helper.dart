@@ -7,32 +7,31 @@ class PeriodHelper {
   PeriodHelper._();
 
   /// Filters a list of expenses according to the selected period:
-  /// - Daily: expenses dated today (00:00:00 to 23:59:59.999)
-  /// - Weekly: from Monday of this week until the end of today
-  /// - Monthly: from the 1st of this month until the end of today
+  /// - Daily: on or after today 00:00:00 (no end cutoff)
+  /// - Weekly: on or after Monday of this week 00:00:00 (no end cutoff)
+  /// - Monthly: on or after the 1st of this month 00:00:00 (no end cutoff)
   static List<ExpenseModel> filterExpensesByPeriod(
     List<ExpenseModel> expenses,
     String period,
   ) {
     final now = DateTime.now();
-    final endOfToday = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
 
     if (period == 'Daily') {
       final startOfToday = DateTime(now.year, now.month, now.day);
       return expenses.where((e) {
-        return !e.date.isBefore(startOfToday) && !e.date.isAfter(endOfToday);
+        return !e.date.isBefore(startOfToday);
       }).toList();
     } else if (period == 'Weekly') {
       // Dart DateTime: Monday is 1, Sunday is 7
       final startOfWeek = DateTime(now.year, now.month, now.day)
           .subtract(Duration(days: now.weekday - 1));
       return expenses.where((e) {
-        return !e.date.isBefore(startOfWeek) && !e.date.isAfter(endOfToday);
+        return !e.date.isBefore(startOfWeek);
       }).toList();
     } else if (period == 'Monthly') {
       final startOfMonth = DateTime(now.year, now.month, 1);
       return expenses.where((e) {
-        return !e.date.isBefore(startOfMonth) && !e.date.isAfter(endOfToday);
+        return !e.date.isBefore(startOfMonth);
       }).toList();
     }
     return expenses;
@@ -58,10 +57,26 @@ class PeriodHelper {
     }
   }
 
+  /// Calculates progress (0.0 to 1.0) safely avoiding NaN/Infinity (2.2):
+  /// If budget <= 0: progress = 0 when spent == 0, and progress = 1 (full) when spent > 0.
+  static double calculateProgress({
+    required double spent,
+    required double totalBudget,
+  }) {
+    if (totalBudget <= 0) {
+      return spent > 0 ? 1.0 : 0.0;
+    }
+    final p = spent / totalBudget;
+    if (p.isNaN || p.isInfinite) {
+      return spent > 0 ? 1.0 : 0.0;
+    }
+    return p.clamp(0.0, 1.0);
+  }
+
   /// Returns progress indicator color based on budget health:
-  /// - Under budget (<80%): AppColors.success (mint green)
-  /// - Near limit (>=80% and remaining >= 0): AppColors.warning (yellow)
   /// - Over budget (remaining < 0): AppColors.danger (red)
+  /// - Near limit (>=80% and remaining >= 0): AppColors.warning (yellow)
+  /// - Under budget (<80%): AppColors.success (mint green)
   static Color getProgressColor({
     required double remaining,
     required double progress,

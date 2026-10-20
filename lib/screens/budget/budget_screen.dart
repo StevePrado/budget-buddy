@@ -7,6 +7,446 @@ import '../../services/expense_service.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/money_format.dart';
 import '../../utils/period_helper.dart';
+import '../../widgets/confirm_dialog.dart';
+
+String _formatBudgetSynced(double value) {
+  if (value < 0) return '';
+  return NumberFormat('#,##0.00').format(value);
+}
+
+Widget _buildDialogAmountField({
+  required TextEditingController controller,
+  required String label,
+  required ValueChanged<String> onChanged,
+}) {
+  return TextFormField(
+    controller: controller,
+    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+    inputFormatters: const [CommaNumberInputFormatter()],
+    style: const TextStyle(
+      color: AppColors.textPrimary,
+      fontWeight: FontWeight.w600,
+      fontSize: 16,
+    ),
+    decoration: InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(color: AppColors.textSecondary),
+      fillColor: AppColors.surfaceHigh,
+      filled: true,
+      prefixIcon: const Padding(
+        padding: EdgeInsets.all(14),
+        child: Text(
+          '₱',
+          style: TextStyle(
+            fontSize: 18,
+            color: AppColors.textSecondary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    ),
+    onChanged: onChanged,
+  );
+}
+
+/// Global dialog function to set/edit student budget (Section 4)
+Future<void> showSetBudgetDialog(
+  BuildContext context, {
+  BudgetModel? currentBudget,
+}) async {
+  BudgetModel? effectiveBudget = currentBudget;
+  effectiveBudget ??= await BudgetService().getBudget();
+
+  if (!context.mounted) return;
+
+  final formKey = GlobalKey<FormState>();
+
+  final dailyController = TextEditingController(
+    text: effectiveBudget != null
+        ? formatAmountForInput(effectiveBudget.dailyBudget, allowZero: true)
+        : '',
+  );
+  final weeklyController = TextEditingController(
+    text: effectiveBudget != null
+        ? formatAmountForInput(effectiveBudget.weeklyBudget, allowZero: true)
+        : '',
+  );
+  final monthlyController = TextEditingController(
+    text: effectiveBudget != null
+        ? formatAmountForInput(effectiveBudget.monthlyBudget, allowZero: true)
+        : '',
+  );
+
+  bool isSaving = false;
+  bool isSyncing = false;
+
+  void onDailyChanged(String text) {
+    if (isSyncing) return;
+    isSyncing = true;
+    final val = parsePeso(text);
+    if (val != null && val >= 0) {
+      weeklyController.text = _formatBudgetSynced(val * 7);
+      weeklyController.selection = TextSelection.collapsed(
+        offset: weeklyController.text.length,
+      );
+      monthlyController.text = _formatBudgetSynced(val * 30);
+      monthlyController.selection = TextSelection.collapsed(
+        offset: monthlyController.text.length,
+      );
+    }
+    isSyncing = false;
+  }
+
+  void onWeeklyChanged(String text) {
+    if (isSyncing) return;
+    isSyncing = true;
+    final val = parsePeso(text);
+    if (val != null && val >= 0) {
+      dailyController.text = _formatBudgetSynced(val / 7);
+      dailyController.selection = TextSelection.collapsed(
+        offset: dailyController.text.length,
+      );
+      monthlyController.text = _formatBudgetSynced(val * 4);
+      monthlyController.selection = TextSelection.collapsed(
+        offset: monthlyController.text.length,
+      );
+    }
+    isSyncing = false;
+  }
+
+  void onMonthlyChanged(String text) {
+    if (isSyncing) return;
+    isSyncing = true;
+    final val = parsePeso(text);
+    if (val != null && val >= 0) {
+      dailyController.text = _formatBudgetSynced(val / 30);
+      dailyController.selection = TextSelection.collapsed(
+        offset: dailyController.text.length,
+      );
+      weeklyController.text = _formatBudgetSynced((val / 30) * 7);
+      weeklyController.selection = TextSelection.collapsed(
+        offset: weeklyController.text.length,
+      );
+    }
+    isSyncing = false;
+  }
+
+  await showDialog(
+    context: context,
+    builder: (ctx) {
+      return StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          return Dialog(
+            backgroundColor: AppColors.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+              side: const BorderSide(color: AppColors.border),
+            ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: SingleChildScrollView(
+                  child: Form(
+                    key: formKey,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // 4.1 & 4.3: Header Row with title on left and X button on right (40x40 area)
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Set Student Budget',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            SizedBox(
+                              width: 40,
+                              height: 40,
+                              child: IconButton(
+                                icon: const Icon(
+                                  Icons.close_rounded,
+                                  color: AppColors.textSecondary,
+                                ),
+                                splashRadius: 20,
+                                padding: EdgeInsets.zero,
+                                onPressed: isSaving
+                                    ? null
+                                    : () => Navigator.pop(ctx),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Enter your allowance limits below.',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+
+                        // Daily Field
+                        _buildDialogAmountField(
+                          controller: dailyController,
+                          label: 'Daily Budget (₱)',
+                          onChanged: onDailyChanged,
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Weekly Field
+                        _buildDialogAmountField(
+                          controller: weeklyController,
+                          label: 'Weekly Budget (₱)',
+                          onChanged: onWeeklyChanged,
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Monthly Field
+                        _buildDialogAmountField(
+                          controller: monthlyController,
+                          label: 'Monthly Budget (₱)',
+                          onChanged: onMonthlyChanged,
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Helper text
+                        const Text(
+                          'Changing one budget updates the others. You can still edit them.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textMuted,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+
+                        // 4.2: Bottom row with Reset on left and Save Budget on right
+                        Row(
+                          children: [
+                            // Left button: Reset (outlined red, with confirmation)
+                            Expanded(
+                              child: SizedBox(
+                                height: 48,
+                                child: OutlinedButton(
+                                  onPressed: isSaving
+                                      ? null
+                                      : () async {
+                                          final confirmed =
+                                              await showAppConfirmDialog(
+                                            context: ctx,
+                                            title: 'Reset Fields?',
+                                            message:
+                                                'Are you sure you want to clear all budget input fields?',
+                                            cancelText: 'Cancel',
+                                            confirmText: 'Reset',
+                                            confirmColor: AppColors.danger,
+                                          );
+                                          if (confirmed == true) {
+                                            dailyController.clear();
+                                            weeklyController.clear();
+                                            monthlyController.clear();
+                                          }
+                                        },
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: AppColors.danger,
+                                    side: const BorderSide(
+                                      color: AppColors.danger,
+                                      width: 1.5,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius:
+                                          BorderRadius.circular(14),
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    'Reset',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+
+                            // Right button: Save Budget (filled primary)
+                            Expanded(
+                              child: SizedBox(
+                                height: 48,
+                                child: ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.primary,
+                                    foregroundColor: Colors.white,
+                                    elevation: 0,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius:
+                                          BorderRadius.circular(14),
+                                    ),
+                                  ),
+                                  onPressed: isSaving
+                                      ? null
+                                      : () async {
+                                          final dailyText =
+                                              dailyController.text.trim();
+                                          final weeklyText =
+                                              weeklyController.text.trim();
+                                          final monthlyText =
+                                              monthlyController.text.trim();
+
+                                          // 2.1: Block empty fields
+                                          if (dailyText.isEmpty ||
+                                              weeklyText.isEmpty ||
+                                              monthlyText.isEmpty) {
+                                            ScaffoldMessenger.of(ctx)
+                                                .showSnackBar(
+                                              const SnackBar(
+                                                content: Text(
+                                                  'Please fill in all budget fields with valid amounts.',
+                                                ),
+                                                backgroundColor:
+                                                    AppColors.danger,
+                                              ),
+                                            );
+                                            return;
+                                          }
+
+                                          final daily = parsePeso(dailyText);
+                                          final weekly = parsePeso(weeklyText);
+                                          final monthly =
+                                              parsePeso(monthlyText);
+
+                                          // 2.1: Block non-numeric values
+                                          if (daily == null ||
+                                              weekly == null ||
+                                              monthly == null) {
+                                            ScaffoldMessenger.of(ctx)
+                                                .showSnackBar(
+                                              const SnackBar(
+                                                content: Text(
+                                                  'Please enter valid numeric amounts.',
+                                                ),
+                                                backgroundColor:
+                                                    AppColors.danger,
+                                              ),
+                                            );
+                                            return;
+                                          }
+
+                                          // 2.1: 0 is valid, block negative numbers
+                                          if (daily < 0 ||
+                                              weekly < 0 ||
+                                              monthly < 0) {
+                                            ScaffoldMessenger.of(ctx)
+                                                .showSnackBar(
+                                              const SnackBar(
+                                                content: Text(
+                                                  'Budget amounts cannot be negative.',
+                                                ),
+                                                backgroundColor:
+                                                    AppColors.danger,
+                                              ),
+                                            );
+                                            return;
+                                          }
+
+                                          // 2.1: Order rule Daily <= Weekly <= Monthly
+                                          if (!(daily <= weekly &&
+                                              weekly <= monthly)) {
+                                            ScaffoldMessenger.of(ctx)
+                                                .showSnackBar(
+                                              const SnackBar(
+                                                content: Text(
+                                                  'Daily must be less than or equal to Weekly, and Weekly less than or equal to Monthly',
+                                                ),
+                                                backgroundColor:
+                                                    AppColors.danger,
+                                              ),
+                                            );
+                                            return;
+                                          }
+
+                                          setDialogState(
+                                              () => isSaving = true);
+                                          try {
+                                            await BudgetService().saveBudget(
+                                              dailyBudget: daily,
+                                              weeklyBudget: weekly,
+                                              monthlyBudget: monthly,
+                                              selectedPeriod: effectiveBudget
+                                                      ?.selectedPeriod ??
+                                                  'Monthly',
+                                            );
+                                            if (ctx.mounted) {
+                                              Navigator.pop(ctx);
+                                              ScaffoldMessenger.of(context)
+                                                  .showSnackBar(
+                                                const SnackBar(
+                                                  content: Text(
+                                                    'Budget saved successfully!',
+                                                  ),
+                                                  backgroundColor:
+                                                      AppColors.success,
+                                                ),
+                                              );
+                                            }
+                                          } catch (e) {
+                                            setDialogState(
+                                                () => isSaving = false);
+                                            if (ctx.mounted) {
+                                              ScaffoldMessenger.of(ctx)
+                                                  .showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    'Error saving budget: $e',
+                                                  ),
+                                                  backgroundColor:
+                                                      AppColors.danger,
+                                                ),
+                                              );
+                                            }
+                                          }
+                                        },
+                                  child: isSaving
+                                      ? const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : const Text(
+                                          'Save Budget',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
+}
 
 class BudgetScreen extends StatefulWidget {
   const BudgetScreen({super.key});
@@ -22,363 +462,6 @@ class _BudgetScreenState extends State<BudgetScreen> {
   // Screen view period state ('Daily', 'Weekly', 'Monthly')
   String _selectedViewPeriod = 'Weekly';
 
-  // Helper string formatter for synced auto-calculated fields
-  String _formatSynced(double value) {
-    if (value <= 0) return '';
-    return NumberFormat('#,##0.00').format(value);
-  }
-
-  // Open Dialog to edit Daily, Weekly, and Monthly budgets
-  void _showEditBudgetDialog(BudgetModel currentBudget) {
-    final formKey = GlobalKey<FormState>();
-
-    final dailyController = TextEditingController(
-      text: currentBudget.dailyBudget > 0
-          ? formatAmountForInput(currentBudget.dailyBudget)
-          : '',
-    );
-    final weeklyController = TextEditingController(
-      text: currentBudget.weeklyBudget > 0
-          ? formatAmountForInput(currentBudget.weeklyBudget)
-          : '',
-    );
-    final monthlyController = TextEditingController(
-      text: currentBudget.monthlyBudget > 0
-          ? formatAmountForInput(currentBudget.monthlyBudget)
-          : '',
-    );
-
-    bool isSaving = false;
-    bool isSyncing = false;
-
-    // 2 & D3: Auto-sync between Daily, Weekly, and Monthly controllers
-    void onDailyChanged(String text) {
-      if (isSyncing) return;
-      isSyncing = true;
-      final val = parsePeso(text);
-      if (val != null && val > 0) {
-        // Daily edited -> Weekly = Daily x 7, Monthly = Daily x 30
-        weeklyController.text = _formatSynced(val * 7);
-        weeklyController.selection = TextSelection.collapsed(
-          offset: weeklyController.text.length,
-        );
-        monthlyController.text = _formatSynced(val * 30);
-        monthlyController.selection = TextSelection.collapsed(
-          offset: monthlyController.text.length,
-        );
-      }
-      isSyncing = false;
-    }
-
-    void onWeeklyChanged(String text) {
-      if (isSyncing) return;
-      isSyncing = true;
-      final val = parsePeso(text);
-      if (val != null && val > 0) {
-        // Weekly edited -> Daily = Weekly / 7, Monthly = Weekly x 4
-        dailyController.text = _formatSynced(val / 7);
-        dailyController.selection = TextSelection.collapsed(
-          offset: dailyController.text.length,
-        );
-        monthlyController.text = _formatSynced(val * 4);
-        monthlyController.selection = TextSelection.collapsed(
-          offset: monthlyController.text.length,
-        );
-      }
-      isSyncing = false;
-    }
-
-    void onMonthlyChanged(String text) {
-      if (isSyncing) return;
-      isSyncing = true;
-      final val = parsePeso(text);
-      if (val != null && val > 0) {
-        // Monthly edited -> Daily = Monthly / 30, Weekly = (Monthly / 30) x 7
-        dailyController.text = _formatSynced(val / 30);
-        dailyController.selection = TextSelection.collapsed(
-          offset: dailyController.text.length,
-        );
-        weeklyController.text = _formatSynced((val / 30) * 7);
-        weeklyController.selection = TextSelection.collapsed(
-          offset: weeklyController.text.length,
-        );
-      }
-      isSyncing = false;
-    }
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return Dialog(
-              backgroundColor: AppColors.surface,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-                side: const BorderSide(color: AppColors.border),
-              ),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: SingleChildScrollView(
-                    child: Form(
-                      key: formKey,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          const Text(
-                            'Set Student Budget',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            'Enter your allowance limits below.',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                          const SizedBox(height: 18),
-
-                          // Daily Field
-                          _buildDialogAmountField(
-                            controller: dailyController,
-                            label: 'Daily Budget (₱)',
-                            onChanged: onDailyChanged,
-                          ),
-                          const SizedBox(height: 14),
-
-                          // Weekly Field
-                          _buildDialogAmountField(
-                            controller: weeklyController,
-                            label: 'Weekly Budget (₱)',
-                            onChanged: onWeeklyChanged,
-                          ),
-                          const SizedBox(height: 14),
-
-                          // Monthly Field
-                          _buildDialogAmountField(
-                            controller: monthlyController,
-                            label: 'Monthly Budget (₱)',
-                            onChanged: onMonthlyChanged,
-                          ),
-                          const SizedBox(height: 12),
-
-                          // Helper text
-                          const Text(
-                            'Changing one budget updates the others. You can still edit them.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textMuted,
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-
-                          // Actions
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              TextButton(
-                                onPressed: isSaving
-                                    ? null
-                                    : () => Navigator.pop(context),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: AppColors.textSecondary,
-                                ),
-                                child: const Text('Cancel'),
-                              ),
-                              const SizedBox(width: 8),
-                              TextButton(
-                                onPressed: isSaving
-                                    ? null
-                                    : () {
-                                        dailyController.clear();
-                                        weeklyController.clear();
-                                        monthlyController.clear();
-                                      },
-                                style: TextButton.styleFrom(
-                                  foregroundColor: AppColors.danger,
-                                ),
-                                child: const Text('Reset'),
-                              ),
-                              const SizedBox(width: 8),
-                              ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppColors.primary,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: 12,
-                                  ),
-                                  minimumSize: const Size(120, 46),
-                                ),
-                                onPressed: isSaving
-                                    ? null
-                                    : () async {
-                                        // 3 & D4: Validation on Save
-                                        final daily =
-                                            parsePeso(dailyController.text);
-                                        final weekly =
-                                            parsePeso(weeklyController.text);
-                                        final monthly =
-                                            parsePeso(monthlyController.text);
-
-                                        if (daily == null ||
-                                            weekly == null ||
-                                            monthly == null) {
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                            const SnackBar(
-                                              content: Text(
-                                                'Please fill in all budget fields with valid amounts.',
-                                              ),
-                                              backgroundColor: AppColors.danger,
-                                            ),
-                                          );
-                                          return;
-                                        }
-
-                                        if (daily <= 0 ||
-                                            weekly <= 0 ||
-                                            monthly <= 0) {
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                            const SnackBar(
-                                              content: Text(
-                                                'Budget amounts must be greater than zero.',
-                                              ),
-                                              backgroundColor: AppColors.danger,
-                                            ),
-                                          );
-                                          return;
-                                        }
-
-                                        if (!(daily <= weekly &&
-                                            weekly <= monthly)) {
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                            const SnackBar(
-                                              content: Text(
-                                                'Daily must be less than or equal to Weekly, and Weekly less than or equal to Monthly',
-                                              ),
-                                              backgroundColor: AppColors.danger,
-                                            ),
-                                          );
-                                          return;
-                                        }
-
-                                        setDialogState(() => isSaving = true);
-                                        try {
-                                          await _budgetService.saveBudget(
-                                            dailyBudget: daily,
-                                            weeklyBudget: weekly,
-                                            monthlyBudget: monthly,
-                                            selectedPeriod:
-                                                currentBudget.selectedPeriod,
-                                          );
-                                          if (context.mounted) {
-                                            Navigator.pop(context);
-                                            ScaffoldMessenger.of(context)
-                                                .showSnackBar(
-                                              const SnackBar(
-                                                content: Text(
-                                                  'Budget saved successfully!',
-                                                ),
-                                                backgroundColor:
-                                                    AppColors.success,
-                                              ),
-                                            );
-                                          }
-                                        } catch (e) {
-                                          setDialogState(
-                                              () => isSaving = false);
-                                          if (context.mounted) {
-                                            ScaffoldMessenger.of(context)
-                                                .showSnackBar(
-                                              SnackBar(
-                                                content: Text(
-                                                  'Error saving budget: $e',
-                                                ),
-                                                backgroundColor:
-                                                    AppColors.danger,
-                                              ),
-                                            );
-                                          }
-                                        }
-                                      },
-                                child: isSaving
-                                    ? const SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.white,
-                                        ),
-                                      )
-                                    : const Text(
-                                        'Save Budget',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildDialogAmountField({
-    required TextEditingController controller,
-    required String label,
-    required ValueChanged<String> onChanged,
-  }) {
-    return TextFormField(
-      controller: controller,
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      inputFormatters: const [CommaNumberInputFormatter()],
-      style: const TextStyle(
-        color: AppColors.textPrimary,
-        fontWeight: FontWeight.w600,
-        fontSize: 16,
-      ),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: const TextStyle(color: AppColors.textSecondary),
-        fillColor: AppColors.surfaceHigh,
-        filled: true,
-        prefixIcon: const Padding(
-          padding: EdgeInsets.all(14),
-          child: Text(
-            '₱',
-            style: TextStyle(
-              fontSize: 18,
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-      ),
-      onChanged: onChanged,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -386,7 +469,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
         title: const Text('Budget Setup & Summary'),
         centerTitle: true,
       ),
-      body: StreamBuilder<BudgetModel>(
+      body: StreamBuilder<BudgetModel?>(
         stream: _budgetService.streamUserBudget(),
         builder: (context, budgetSnapshot) {
           if (budgetSnapshot.connectionState == ConnectionState.waiting) {
@@ -402,13 +485,8 @@ class _BudgetScreenState extends State<BudgetScreen> {
             );
           }
 
-          final budget = budgetSnapshot.data ??
-              BudgetModel(
-                userId: _budgetService.currentUserId,
-                dailyBudget: 0,
-                weeklyBudget: 0,
-                monthlyBudget: 0,
-              );
+          final budget = budgetSnapshot.data;
+          final hasBudget = budget != null;
 
           // Stream all expenses to calculate period expenses accurately (G4)
           return StreamBuilder<List<ExpenseModel>>(
@@ -428,9 +506,11 @@ class _BudgetScreenState extends State<BudgetScreen> {
               final remainingBudget = totalBudget - periodExpenses;
               final isOverBudget = remainingBudget < 0;
 
-              final progress = totalBudget > 0
-                  ? (periodExpenses / totalBudget).clamp(0.0, 1.0)
-                  : 0.0;
+              // 2.2: Division by zero safe progress calculation
+              final progress = PeriodHelper.calculateProgress(
+                spent: periodExpenses,
+                totalBudget: totalBudget,
+              );
               final progressColor = PeriodHelper.getProgressColor(
                 remaining: remainingBudget,
                 progress: progress,
@@ -574,8 +654,8 @@ class _BudgetScreenState extends State<BudgetScreen> {
                                 ),
                                 const SizedBox(height: 10),
                                 Text(
-                                  totalBudget == 0
-                                      ? 'Tap "Edit Budgets" below to set your allowance.'
+                                  !hasBudget
+                                      ? 'Tap "Set Budget" below to set your allowance.'
                                       : isOverBudget
                                           ? 'You have exceeded your ${_selectedViewPeriod.toLowerCase()} budget by ${formatPeso(remainingBudget.abs())}!'
                                           : '${(progress * 100).toStringAsFixed(1)}% of ${_selectedViewPeriod.toLowerCase()} budget used',
@@ -608,9 +688,9 @@ class _BudgetScreenState extends State<BudgetScreen> {
                               ),
                             ),
                             TextButton.icon(
-                              onPressed: () => _showEditBudgetDialog(budget),
+                              onPressed: () => showSetBudgetDialog(context, currentBudget: budget),
                               icon: const Icon(Icons.edit_rounded, size: 16),
-                              label: const Text('Edit Budgets'),
+                              label: Text(hasBudget ? 'Edit Budgets' : 'Set Budget'),
                               style: TextButton.styleFrom(
                                 foregroundColor: AppColors.primary,
                               ),
@@ -622,7 +702,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                         _buildBudgetTierTile(
                           title: 'Daily Budget',
                           subtitle: 'Recommended daily spending limit',
-                          amount: budget.dailyBudget,
+                          amount: budget?.dailyBudget ?? 0.0,
                           icon: Icons.today_rounded,
                           accentColor: AppColors.primary,
                           isActive: _selectedViewPeriod == 'Daily',
@@ -631,7 +711,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                         _buildBudgetTierTile(
                           title: 'Weekly Budget',
                           subtitle: '7-day allowance allocation',
-                          amount: budget.weeklyBudget,
+                          amount: budget?.weeklyBudget ?? 0.0,
                           icon: Icons.date_range_rounded,
                           accentColor: AppColors.secondary,
                           isActive: _selectedViewPeriod == 'Weekly',
@@ -640,7 +720,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                         _buildBudgetTierTile(
                           title: 'Monthly Budget',
                           subtitle: 'Full month allowance allocation',
-                          amount: budget.monthlyBudget,
+                          amount: budget?.monthlyBudget ?? 0.0,
                           icon: Icons.calendar_month_rounded,
                           accentColor: const Color(0xFF22D3EE),
                           isActive: _selectedViewPeriod == 'Monthly',
@@ -656,20 +736,14 @@ class _BudgetScreenState extends State<BudgetScreen> {
           );
         },
       ),
-      floatingActionButton: StreamBuilder<BudgetModel>(
+      floatingActionButton: StreamBuilder<BudgetModel?>(
         stream: _budgetService.streamUserBudget(),
         builder: (context, snapshot) {
-          final currentBudget = snapshot.data ??
-              BudgetModel(
-                userId: _budgetService.currentUserId,
-                dailyBudget: 0,
-                weeklyBudget: 0,
-                monthlyBudget: 0,
-              );
+          final currentBudget = snapshot.data;
           return FloatingActionButton.extended(
-            onPressed: () => _showEditBudgetDialog(currentBudget),
+            onPressed: () => showSetBudgetDialog(context, currentBudget: currentBudget),
             icon: const Icon(Icons.calculate_outlined),
-            label: const Text('Set Budget'),
+            label: Text(currentBudget == null ? 'Set Budget' : 'Edit Budgets'),
           );
         },
       ),

@@ -4,19 +4,26 @@ import '../screens/expenses/expenses_screen.dart';
 import '../screens/summary/summary_screen.dart';
 import '../screens/profile/profile_screen.dart';
 import '../screens/expenses/add_edit_expense_screen.dart';
+import '../services/budget_service.dart';
+import '../theme/app_colors.dart';
 import '../widgets/app_drawer.dart';
+import '../widgets/confirm_dialog.dart';
 
 // Main Navigation Shell with Bottom Navigation Bar + FAB
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
 
+  static MainShellState? of(BuildContext context) =>
+      context.findAncestorStateOfType<MainShellState>();
+
   @override
-  State<MainShell> createState() => _MainShellState();
+  State<MainShell> createState() => MainShellState();
 }
 
-class _MainShellState extends State<MainShell> {
+class MainShellState extends State<MainShell> {
   int _currentIndex = 0;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  final BudgetService _budgetService = BudgetService();
 
   static const List<Widget> _screens = [
     SummaryScreen(),
@@ -26,6 +33,38 @@ class _MainShellState extends State<MainShell> {
   ];
 
   void _openDrawer() => _scaffoldKey.currentState?.openDrawer();
+
+  void navigateTo(int index, {bool openSetBudget = false}) {
+    setState(() => _currentIndex = index);
+    if (openSetBudget) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        showSetBudgetDialog(context);
+      });
+    }
+  }
+
+  Future<void> _onAddExpensePressed() async {
+    final hasBudget = await _budgetService.hasBudget();
+    if (!mounted) return;
+    if (!hasBudget) {
+      final confirmed = await showAppConfirmDialog(
+        context: context,
+        title: 'Set your budget first',
+        message: 'You need to set a budget before adding expenses.',
+        cancelText: 'Cancel',
+        confirmText: 'Set Budget',
+        confirmColor: AppColors.primary,
+      );
+      if (confirmed == true && mounted) {
+        navigateTo(2, openSetBudget: true);
+      }
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AddEditExpenseScreen()),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -75,11 +114,7 @@ class _MainShellState extends State<MainShell> {
       // ── FAB ──────────────────────────────────────────────────────
       floatingActionButton: _currentIndex == 0
           ? FloatingActionButton(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (_) => const AddEditExpenseScreen()),
-              ),
+              onPressed: _onAddExpensePressed,
               child: const Icon(Icons.add_rounded),
             )
           : null,

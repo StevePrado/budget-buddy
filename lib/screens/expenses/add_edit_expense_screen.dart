@@ -5,10 +5,13 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../../constants/expense_categories.dart';
 import '../../models/expense_model.dart';
+import '../../services/budget_service.dart';
 import '../../services/expense_service.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/money_format.dart';
 import '../../widgets/confirm_dialog.dart';
+import '../../widgets/main_shell.dart';
+import '../budget/budget_screen.dart';
 
 class AddEditExpenseScreen extends StatefulWidget {
   final ExpenseModel? expense; // null = Add mode, non-null = Edit mode
@@ -24,7 +27,10 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
   final _nameController = TextEditingController();
   final _amountController = TextEditingController();
   final _notesController = TextEditingController();
+  final _notesFocusNode = FocusNode();
+  bool _notesHasFocus = false;
   final _expenseService = ExpenseService();
+  final _budgetService = BudgetService();
   final _imagePicker = ImagePicker();
 
   String _selectedCategory = ExpenseCategories.food.name;
@@ -89,6 +95,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
     _nameController.dispose();
     _amountController.dispose();
     _notesController.dispose();
+    _notesFocusNode.dispose();
     super.dispose();
   }
 
@@ -171,12 +178,14 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
     );
   }
 
+  // 6.4: Allow future dates up to at least 2 years from now
   Future<void> _pickDate() async {
+    final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
       firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+      lastDate: DateTime(now.year + 2, 12, 31),
       builder: (context, child) => Theme(
         data: Theme.of(context).copyWith(
           colorScheme: Theme.of(context).colorScheme.copyWith(
@@ -214,6 +223,34 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSaving = true);
     try {
+      // 3.2: Guard against adding expense if no budget exists
+      if (!_isEditing) {
+        final hasBudget = await _budgetService.hasBudget();
+        if (!hasBudget) {
+          if (mounted) {
+            setState(() => _isSaving = false);
+            final setBudget = await showAppConfirmDialog(
+              context: context,
+              title: 'Set your budget first',
+              message: 'You need to set a budget before adding expenses.',
+              cancelText: 'Cancel',
+              confirmText: 'Set Budget',
+              confirmColor: AppColors.primary,
+            );
+            if (setBudget == true && mounted) {
+              Navigator.of(context).pop();
+              final shell = MainShell.of(context);
+              if (shell != null) {
+                shell.navigateTo(2, openSetBudget: true);
+              } else {
+                showSetBudgetDialog(context);
+              }
+            }
+          }
+          return;
+        }
+      }
+
       final parsedAmount = parsePeso(_amountController.text);
       if (parsedAmount == null || parsedAmount <= 0) {
         throw Exception('Please enter a valid amount.');
@@ -294,6 +331,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     // 1.1: Expense Name (Optional, defaults to category name)
+                    // 5.2: Size 22 icon, AppColors.textSecondary
                     TextFormField(
                       controller: _nameController,
                       decoration: const InputDecoration(
@@ -301,14 +339,14 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
                         hintText: 'Optional (defaults to category name)',
                         prefixIcon: Icon(
                           Icons.label_outline,
+                          size: 22,
                           color: AppColors.textSecondary,
                         ),
                       ),
-                      // Not required anymore per 1.1
                     ),
                     const SizedBox(height: 14),
 
-                    // Amount field with peso prefix and comma formatter
+                    // Amount field with peso prefix and comma formatter (5.2: matching 48px width)
                     TextFormField(
                       controller: _amountController,
                       keyboardType:
@@ -316,14 +354,16 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
                       inputFormatters: const [CommaNumberInputFormatter()],
                       decoration: const InputDecoration(
                         labelText: 'Amount (₱)',
-                        prefixIcon: Padding(
-                          padding: EdgeInsets.all(14),
-                          child: Text(
-                            '₱',
-                            style: TextStyle(
-                              fontSize: 20,
-                              color: AppColors.textSecondary,
-                              fontWeight: FontWeight.w600,
+                        prefixIcon: SizedBox(
+                          width: 48,
+                          child: Center(
+                            child: Text(
+                              '₱',
+                              style: TextStyle(
+                                fontSize: 20,
+                                color: AppColors.textSecondary,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                         ),
@@ -339,13 +379,14 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
                     ),
                     const SizedBox(height: 14),
 
-                    // Category Dropdown (Required)
+                    // Category Dropdown (Required, 5.2: size 22 icon)
                     DropdownButtonFormField<String>(
                       initialValue: _selectedCategory,
                       decoration: const InputDecoration(
                         labelText: 'Category',
                         prefixIcon: Icon(
                           Icons.category_outlined,
+                          size: 22,
                           color: AppColors.textSecondary,
                         ),
                       ),
@@ -373,7 +414,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
                     ),
                     const SizedBox(height: 14),
 
-                    // Date Picker
+                    // Date Picker (5.2: size 22 icon)
                     InkWell(
                       onTap: _pickDate,
                       borderRadius: BorderRadius.circular(16),
@@ -382,6 +423,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
                           labelText: 'Date',
                           prefixIcon: Icon(
                             Icons.calendar_today_outlined,
+                            size: 22,
                             color: AppColors.textSecondary,
                           ),
                         ),
@@ -393,24 +435,75 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
                     ),
                     const SizedBox(height: 14),
 
-                    // Notes field
-                    TextFormField(
-                      controller: _notesController,
-                      minLines: 3,
-                      maxLines: 4,
-                      decoration: const InputDecoration(
-                        labelText: 'Notes (optional)',
-                        alignLabelWithHint: true,
-                        prefixIcon: Align(
-                          alignment: Alignment.topCenter,
-                          widthFactor: 1,
-                          heightFactor: 1,
-                          child: Padding(
-                            padding: EdgeInsets.only(top: 14),
-                            child: Icon(
-                              Icons.notes_outlined,
-                              color: AppColors.textSecondary,
+                    // 5.1 & 5.2: Notes field: icon lines up with FIRST line of text/hint
+                    // Container matches input styling (AppColors.surfaceHigh, radius 16)
+                    // Icon sits at top-left (left: 13, top: 1) with size 22 matching other fields
+                    GestureDetector(
+                      onTap: () => _notesFocusNode.requestFocus(),
+                      behavior: HitTestBehavior.opaque,
+                      child: Focus(
+                        onFocusChange: (focused) {
+                          setState(() => _notesHasFocus = focused);
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceHigh,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: _notesHasFocus
+                                  ? AppColors.primary
+                                  : Colors.transparent,
+                              width: _notesHasFocus ? 1.5 : 1.0,
                             ),
+                          ),
+                          padding: const EdgeInsets.only(
+                            left: 13,
+                            right: 18,
+                            top: 16,
+                            bottom: 16,
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Padding(
+                                padding: EdgeInsets.only(top: 1),
+                                child: Icon(
+                                  Icons.notes_outlined,
+                                  size: 22,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                              const SizedBox(width: 13),
+                              Expanded(
+                                child: TextFormField(
+                                  controller: _notesController,
+                                  focusNode: _notesFocusNode,
+                                  minLines: 3,
+                                  maxLines: 5,
+                                  textAlignVertical: TextAlignVertical.top,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    color: AppColors.textPrimary,
+                                    height: 1.35,
+                                  ),
+                                  decoration: const InputDecoration(
+                                    isDense: true,
+                                    hintText: 'Notes (optional)',
+                                    hintStyle: TextStyle(
+                                      color: AppColors.textMuted,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.normal,
+                                    ),
+                                    contentPadding: EdgeInsets.zero,
+                                    border: InputBorder.none,
+                                    enabledBorder: InputBorder.none,
+                                    focusedBorder: InputBorder.none,
+                                    filled: false,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),

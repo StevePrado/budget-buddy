@@ -17,6 +17,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final _confirmPasswordController = TextEditingController();
   final _authService = AuthService();
 
+  final _passwordFocusNode = FocusNode();
+  bool _passwordTouched = false;
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
@@ -44,47 +46,37 @@ class _LoginScreenState extends State<LoginScreen> {
   bool get _passwordsMatch =>
       _passwordController.text == _confirmPasswordController.text;
 
-  // Strength calculation: 0 to 5
-  int get _passwordStrengthScore {
-    int score = 0;
-    if (_hasMinLength) score++;
-    if (_hasUppercase) score++;
-    if (_hasLowercase) score++;
-    if (_hasNumber) score++;
-    if (_hasSpecialChar) score++;
-    return score;
-  }
-
-  String get _strengthLabel {
-    final score = _passwordStrengthScore;
-    if (score <= 2) return 'Weak';
-    if (score == 3) return 'Fair';
-    if (score == 4) return 'Good';
-    return 'Strong';
-  }
-
-  Color get _strengthColor {
-    final score = _passwordStrengthScore;
-    if (score <= 2) return AppColors.danger;
-    if (score == 3) return const Color(0xFFFF9F43); // orange
-    if (score == 4) return AppColors.warning; // yellow
-    return AppColors.success; // green
-  }
-
   bool get _isRegisterButtonEnabled {
     if (_isLogin) return true;
     return _allPasswordRulesMet &&
         _passwordsMatch &&
         _passwordController.text.isNotEmpty &&
+        _confirmPasswordController.text.isNotEmpty &&
         _emailController.text.trim().isNotEmpty;
   }
 
   @override
   void initState() {
     super.initState();
-    _passwordController.addListener(_onFieldChanged);
+    _passwordFocusNode.addListener(_onPasswordInteraction);
+    _passwordController.addListener(_onPasswordChanged);
     _confirmPasswordController.addListener(_onFieldChanged);
     _emailController.addListener(_onFieldChanged);
+  }
+
+  void _onPasswordInteraction() {
+    if (_passwordFocusNode.hasFocus && !_passwordTouched) {
+      if (mounted) {
+        setState(() => _passwordTouched = true);
+      }
+    }
+  }
+
+  void _onPasswordChanged() {
+    if (_passwordController.text.isNotEmpty && !_passwordTouched) {
+      _passwordTouched = true;
+    }
+    _onFieldChanged();
   }
 
   void _onFieldChanged() {
@@ -98,6 +90,7 @@ class _LoginScreenState extends State<LoginScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    _passwordFocusNode.dispose();
     super.dispose();
   }
 
@@ -105,6 +98,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (_isLogin == isLogin) return;
     setState(() {
       _isLogin = isLogin;
+      _passwordTouched = false;
       _formKey.currentState?.reset();
     });
   }
@@ -328,6 +322,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         // Password Field
                         TextFormField(
                           controller: _passwordController,
+                          focusNode: _passwordFocusNode,
                           obscureText: _obscurePassword,
                           decoration: InputDecoration(
                             labelText: 'Password',
@@ -355,34 +350,65 @@ class _LoginScreenState extends State<LoginScreen> {
                           },
                         ),
 
-                        // 6.3: Live checklist and strength bar (Register only)
-                        if (!_isLogin) ...[
-                          const SizedBox(height: 12),
-                          _buildPasswordStrengthBar(),
-                          const SizedBox(height: 12),
-                          _buildPasswordRuleItem(
-                            isMet: _hasMinLength,
-                            text: 'At least 8 characters',
+                        // 1.1 - 1.3: Unmet password rules only (Register only)
+                        if (!_isLogin && _passwordTouched) ...[
+                          const SizedBox(height: 8),
+                          AnimatedSize(
+                            duration: const Duration(milliseconds: 250),
+                            curve: Curves.easeInOut,
+                            alignment: Alignment.topCenter,
+                            child: _allPasswordRulesMet
+                                ? const Padding(
+                                    key: ValueKey('strong_password_indicator'),
+                                    padding: EdgeInsets.symmetric(vertical: 4),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.check_circle_rounded,
+                                          size: 15,
+                                          color: AppColors.success,
+                                        ),
+                                        SizedBox(width: 8),
+                                        Text(
+                                          'Strong password',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: AppColors.success,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  )
+                                : Column(
+                                    key: const ValueKey('unmet_password_rules'),
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      if (!_hasMinLength)
+                                        _buildUnmetRuleItem(
+                                            'At least 8 characters'),
+                                      if (!_hasUppercase)
+                                        _buildUnmetRuleItem(
+                                            'At least 1 uppercase letter'),
+                                      if (!_hasLowercase)
+                                        _buildUnmetRuleItem(
+                                            'At least 1 lowercase letter'),
+                                      if (!_hasNumber)
+                                        _buildUnmetRuleItem(
+                                            'At least 1 number'),
+                                      if (!_hasSpecialChar)
+                                        _buildUnmetRuleItem(
+                                            'At least 1 special character (!@#\$%^&*.,?_-)'),
+                                    ],
+                                  ),
                           ),
-                          _buildPasswordRuleItem(
-                            isMet: _hasUppercase,
-                            text: 'At least 1 uppercase letter',
-                          ),
-                          _buildPasswordRuleItem(
-                            isMet: _hasLowercase,
-                            text: 'At least 1 lowercase letter',
-                          ),
-                          _buildPasswordRuleItem(
-                            isMet: _hasNumber,
-                            text: 'At least 1 number',
-                          ),
-                          _buildPasswordRuleItem(
-                            isMet: _hasSpecialChar,
-                            text: 'At least 1 special character (!@#\$%^&*.,?_-)',
-                          ),
-                          const SizedBox(height: 14),
+                          const SizedBox(height: 4),
+                        ],
 
-                          // 6.2: Confirm Password Field
+                        if (!_isLogin) ...[
+                          const SizedBox(height: 10),
+                          // 1.4 & 6.2: Confirm Password Field
                           TextFormField(
                             controller: _confirmPasswordController,
                             obscureText: _obscureConfirmPassword,
@@ -490,92 +516,25 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildPasswordStrengthBar() {
-    final score = _passwordStrengthScore;
-    final color = _strengthColor;
-    final label = _passwordController.text.isEmpty ? 'None' : _strengthLabel;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              'Password Strength',
-              style: TextStyle(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                color: _passwordController.text.isEmpty
-                    ? AppColors.textMuted
-                    : color,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        Row(
-          children: List.generate(4, (index) {
-            // index 0: Weak (score >= 1)
-            // index 1: Fair (score >= 3)
-            // index 2: Good (score >= 4)
-            // index 3: Strong (score >= 5)
-            final bool isActive;
-            if (index == 0) {
-              isActive = score >= 1;
-            } else if (index == 1) {
-              isActive = score >= 3;
-            } else if (index == 2) {
-              isActive = score >= 4;
-            } else {
-              isActive = score >= 5;
-            }
-
-            return Expanded(
-              child: Container(
-                height: 5,
-                margin: EdgeInsets.only(right: index < 3 ? 4 : 0),
-                decoration: BoxDecoration(
-                  color: isActive ? color : AppColors.surfaceHigh,
-                  borderRadius: BorderRadius.circular(3),
-                ),
-              ),
-            );
-          }),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPasswordRuleItem({
-    required bool isMet,
-    required String text,
-  }) {
+  Widget _buildUnmetRuleItem(String text) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2.5),
+      key: ValueKey<String>(text),
+      padding: const EdgeInsets.symmetric(vertical: 2.0),
       child: Row(
         children: [
-          Icon(
-            isMet ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
-            size: 15,
-            color: isMet ? AppColors.success : AppColors.textMuted,
+          const Icon(
+            Icons.close_rounded,
+            size: 14,
+            color: AppColors.danger,
           ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               text,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 12,
-                color: isMet ? AppColors.textPrimary : AppColors.textMuted,
-                fontWeight: isMet ? FontWeight.w500 : FontWeight.normal,
+                color: AppColors.danger,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ),

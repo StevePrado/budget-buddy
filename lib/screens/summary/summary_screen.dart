@@ -35,12 +35,13 @@ class _SummaryScreenState extends State<SummaryScreen> {
         builder: (context, expSnap) {
           final allExpenses = expSnap.data ?? [];
 
-          return StreamBuilder<BudgetModel>(
+          return StreamBuilder<BudgetModel?>(
             stream: _budgetService.streamUserBudget(),
             builder: (context, budgetSnap) {
               final budget = budgetSnap.data;
+              final hasBudget = budget != null;
 
-              // G4 & S1: Filter expenses by selected period and compute totals
+              // G4 & S1: Filter expenses by selected period and compute totals (6.2: no end cutoff)
               final periodExpenses =
                   PeriodHelper.filterExpensesByPeriod(allExpenses, _selectedPeriod);
               final totalExpenses =
@@ -50,9 +51,11 @@ class _SummaryScreenState extends State<SummaryScreen> {
               final remaining = totalBudget - totalExpenses;
               final isOver = remaining < 0;
 
-              final progress = totalBudget > 0
-                  ? (totalExpenses / totalBudget).clamp(0.0, 1.0)
-                  : 0.0;
+              // 2.2: Division by zero safe progress calculation
+              final progress = PeriodHelper.calculateProgress(
+                spent: totalExpenses,
+                totalBudget: totalBudget,
+              );
               final progressColor = PeriodHelper.getProgressColor(
                 remaining: remaining,
                 progress: progress,
@@ -221,16 +224,18 @@ class _SummaryScreenState extends State<SummaryScreen> {
                                       MainAxisAlignment.spaceBetween,
                                   children: [
                                     Text(
-                                      totalBudget > 0
-                                          ? '${(progress * 100).toStringAsFixed(1)}% of budget used'
-                                          : 'No budget set for $_selectedPeriod',
+                                      !hasBudget
+                                          ? 'No budget set for $_selectedPeriod'
+                                          : isOver
+                                              ? 'Over budget'
+                                              : '${(progress * 100).toStringAsFixed(1)}% of budget used',
                                       style: const TextStyle(
                                         color: AppColors.textSecondary,
                                         fontSize: 12,
                                         fontWeight: FontWeight.w500,
                                       ),
                                     ),
-                                    if (totalBudget > 0)
+                                    if (hasBudget)
                                       Text(
                                         isOver
                                             ? 'Over limit'
@@ -299,9 +304,10 @@ class _SummaryScreenState extends State<SummaryScreen> {
                               .where((cat) => byCategory.containsKey(cat.name))
                               .map((cat) {
                             final spent = byCategory[cat.name] ?? 0;
-                            final catProgress = totalBudget > 0
-                                ? (spent / totalBudget).clamp(0.0, 1.0)
-                                : 0.0;
+                            final catProgress = PeriodHelper.calculateProgress(
+                              spent: spent,
+                              totalBudget: totalBudget,
+                            );
                             return _categoryRow(
                               cat.name,
                               cat.icon,
@@ -326,6 +332,7 @@ class _SummaryScreenState extends State<SummaryScreen> {
                           const SizedBox(height: 12),
                           ...allExpenses.take(5).map((e) {
                             final cat = ExpenseCategories.fromName(e.category);
+                            final isUpcoming = e.date.isAfter(DateTime.now());
                             return Card(
                               margin: const EdgeInsets.only(bottom: 8),
                               shape: RoundedRectangleBorder(
@@ -343,12 +350,56 @@ class _SummaryScreenState extends State<SummaryScreen> {
                                   child: Icon(cat.icon,
                                       color: cat.color, size: 20),
                                 ),
-                                title: Text(
-                                  e.name,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    color: AppColors.textPrimary,
-                                  ),
+                                title: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        e.name,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.textPrimary,
+                                        ),
+                                      ),
+                                    ),
+                                    if (isUpcoming)
+                                      Container(
+                                        margin: const EdgeInsets.only(left: 6),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.primary
+                                              .withValues(alpha: 0.2),
+                                          borderRadius:
+                                              BorderRadius.circular(6),
+                                          border: Border.all(
+                                            color: AppColors.primary
+                                                .withValues(alpha: 0.4),
+                                            width: 0.8,
+                                          ),
+                                        ),
+                                        child: const Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.event_outlined,
+                                              size: 10,
+                                              color: AppColors.primary,
+                                            ),
+                                            SizedBox(width: 3),
+                                            Text(
+                                              'Upcoming',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w600,
+                                                color: AppColors.primary,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                  ],
                                 ),
                                 subtitle: Text(
                                   DateFormat('MMM dd').format(e.date),

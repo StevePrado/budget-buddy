@@ -4,10 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../constants/expense_categories.dart';
 import '../../models/expense_model.dart';
+import '../../services/budget_service.dart';
 import '../../services/expense_service.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/money_format.dart';
 import '../../widgets/confirm_dialog.dart';
+import '../../widgets/main_shell.dart';
+import '../budget/budget_screen.dart';
 import 'add_edit_expense_screen.dart';
 
 class ExpensesScreen extends StatefulWidget {
@@ -19,6 +22,7 @@ class ExpensesScreen extends StatefulWidget {
 
 class _ExpensesScreenState extends State<ExpensesScreen> {
   final _expenseService = ExpenseService();
+  final _budgetService = BudgetService();
 
   // Filters state
   String? _filterCategory; // null = "All"
@@ -28,7 +32,30 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
   final Set<String> _selectedExpenseIds = {};
   bool get _isSelectionMode => _selectedExpenseIds.isNotEmpty;
 
-  void _openAddExpense() {
+  Future<void> _openAddExpense() async {
+    // 3.1: Block adding expense if user has never saved a budget
+    final hasBudget = await _budgetService.hasBudget();
+    if (!mounted) return;
+    if (!hasBudget) {
+      final confirmed = await showAppConfirmDialog(
+        context: context,
+        title: 'Set your budget first',
+        message: 'You need to set a budget before adding expenses.',
+        cancelText: 'Cancel',
+        confirmText: 'Set Budget',
+        confirmColor: AppColors.primary,
+      );
+      if (confirmed == true && mounted) {
+        final shell = MainShell.of(context);
+        if (shell != null) {
+          shell.navigateTo(2, openSetBudget: true);
+        } else {
+          showSetBudgetDialog(context);
+        }
+      }
+      return;
+    }
+
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const AddEditExpenseScreen()),
@@ -49,7 +76,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
     final picked = await showDateRangePicker(
       context: context,
       firstDate: DateTime(2020),
-      lastDate: now.add(const Duration(days: 365)),
+      lastDate: DateTime(now.year + 2, 12, 31),
       initialDateRange: _filterDateRange ??
           DateTimeRange(
             start: now.subtract(const Duration(days: 7)),
@@ -491,6 +518,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
     required bool isSelected,
   }) {
     final cat = ExpenseCategories.fromName(expense.category);
+    final isUpcoming = expense.date.isAfter(DateTime.now());
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
@@ -555,7 +583,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
               ),
               const SizedBox(width: 14),
 
-              // Name + category + date
+              // Name + category + date + upcoming chip (6.3)
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -569,12 +597,55 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                       ),
                     ),
                     const SizedBox(height: 3),
-                    Text(
-                      '${expense.category} • ${DateFormat('MMM dd').format(expense.date)}',
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 12,
-                      ),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            '${expense.category} • ${DateFormat('MMM dd').format(expense.date)}',
+                            style: const TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 12,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (isUpcoming) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: AppColors.primary.withValues(alpha: 0.4),
+                                width: 0.8,
+                              ),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.event_outlined,
+                                  size: 10,
+                                  color: AppColors.primary,
+                                ),
+                                SizedBox(width: 3),
+                                Text(
+                                  'Upcoming',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.primary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ],
                 ),
