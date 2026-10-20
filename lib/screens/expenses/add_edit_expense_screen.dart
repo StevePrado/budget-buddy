@@ -5,7 +5,9 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../../constants/expense_categories.dart';
 import '../../models/expense_model.dart';
+import '../../services/budget_service.dart';
 import '../../services/expense_service.dart';
+import '../../utils/period_helper.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/money_format.dart';
 import '../../widgets/confirm_dialog.dart';
@@ -239,14 +241,30 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
       } else {
         await _expenseService.addExpense(expense);
       }
+      // Check if this expense pushed user over budget
+      String? overBudgetNotice;
+      try {
+        final budget = await BudgetService().streamUserBudget().first;
+        final allExpenses = await _expenseService.streamExpenses().first;
+        final dailyTotal = PeriodHelper.calculatePeriodTotal(allExpenses, 'Daily');
+        final weeklyTotal = PeriodHelper.calculatePeriodTotal(allExpenses, 'Weekly');
+        final monthlyTotal = PeriodHelper.calculatePeriodTotal(allExpenses, 'Monthly');
+        if (budget.dailyBudget > 0 && dailyTotal > budget.dailyBudget) {
+          overBudgetNotice = 'You exceeded your Daily budget by ${formatPeso(dailyTotal - budget.dailyBudget)}';
+        } else if (budget.weeklyBudget > 0 && weeklyTotal > budget.weeklyBudget) {
+          overBudgetNotice = 'You exceeded your Weekly budget by ${formatPeso(weeklyTotal - budget.weeklyBudget)}';
+        } else if (budget.monthlyBudget > 0 && monthlyTotal > budget.monthlyBudget) {
+          overBudgetNotice = 'You exceeded your Monthly budget by ${formatPeso(monthlyTotal - budget.monthlyBudget)}';
+        }
+      } catch (_) {}
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(_isEditing
-                ? 'Expense updated!'
-                : 'Expense added successfully!'),
-            backgroundColor: AppColors.success,
+            content: overBudgetNotice != null
+                ? Text(' ⚠️ $overBudgetNotice', style: const TextStyle(fontWeight: FontWeight.w600))
+                : Text(_isEditing ? 'Expense updated!' : 'Expense added successfully!'),
+            backgroundColor: overBudgetNotice != null ? AppColors.danger : AppColors.success,
           ),
         );
         Navigator.pop(context);

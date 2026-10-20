@@ -7,6 +7,7 @@ import '../../services/expense_service.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/money_format.dart';
 import '../../utils/period_helper.dart';
+import '../../widgets/budget_alert_banner.dart';
 
 class BudgetScreen extends StatefulWidget {
   const BudgetScreen({super.key});
@@ -484,6 +485,15 @@ class _BudgetScreenState extends State<BudgetScreen> {
                           }).toList(),
                         ),
                         const SizedBox(height: 16),
+
+                        // On-App Budget Alert Banner (when student exceeds budget)
+                        if (isOverBudget && totalBudget > 0)
+                          BudgetAlertBanner(
+                            period: _selectedViewPeriod,
+                            budget: totalBudget,
+                            spent: periodExpenses,
+                            onAction: () => _showEditBudgetDialog(budget),
+                          ),
 
                         // 1. BUDGET SUMMARY CARD
                         Card(

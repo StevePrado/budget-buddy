@@ -9,6 +9,10 @@ import '../../theme/app_colors.dart';
 import '../../utils/money_format.dart';
 import '../../widgets/confirm_dialog.dart';
 import 'add_edit_expense_screen.dart';
+import '../../models/budget_model.dart';
+import '../../services/budget_service.dart';
+import '../../utils/period_helper.dart';
+import '../../widgets/budget_alert_banner.dart';
 
 class ExpensesScreen extends StatefulWidget {
   const ExpensesScreen({super.key});
@@ -19,6 +23,7 @@ class ExpensesScreen extends StatefulWidget {
 
 class _ExpensesScreenState extends State<ExpensesScreen> {
   final _expenseService = ExpenseService();
+  bool _isAlertDismissed = false;
 
   // Filters state
   String? _filterCategory; // null = "All"
@@ -381,6 +386,30 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                     ],
                   ),
                 ),
+
+                // Over Budget Alert Banner
+                if (!_isAlertDismissed)
+                  StreamBuilder<BudgetModel>(
+                    stream: BudgetService().streamUserBudget(),
+                    builder: (context, budgetSnap) {
+                      final budget = budgetSnap.data;
+                      if (budget != null && budget.weeklyBudget > 0) {
+                        final weeklySpent = PeriodHelper.calculatePeriodTotal(all, 'Weekly');
+                        if (weeklySpent > budget.weeklyBudget) {
+                          return Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                            child: BudgetAlertBanner(
+                              period: 'Weekly',
+                              budget: budget.weeklyBudget,
+                              spent: weeklySpent,
+                              onDismiss: () => setState(() => _isAlertDismissed = true),
+                            ),
+                          );
+                        }
+                      }
+                      return const SizedBox.shrink();
+                    },
+                  ),
 
                 // Main Expense List
                 Expanded(

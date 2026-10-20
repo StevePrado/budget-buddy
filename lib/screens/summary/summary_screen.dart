@@ -8,6 +8,7 @@ import '../../services/expense_service.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/money_format.dart';
 import '../../utils/period_helper.dart';
+import '../../widgets/budget_alert_banner.dart';
 
 class SummaryScreen extends StatefulWidget {
   const SummaryScreen({super.key});
@@ -113,6 +114,14 @@ class _SummaryScreenState extends State<SummaryScreen> {
                           }).toList(),
                         ),
                         const SizedBox(height: 16),
+
+                        // On-App Budget Alert Banner (when student exceeds budget)
+                        if (isOver && totalBudget > 0)
+                          BudgetAlertBanner(
+                            period: _selectedPeriod,
+                            budget: totalBudget,
+                            spent: totalExpenses,
+                          ),
 
                         // S2: Prominent Remaining Budget Card (Visual Focus)
                         Card(
