@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
+import '../../services/notification_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/confirm_dialog.dart';
 
@@ -88,6 +89,72 @@ class ProfileScreen extends StatelessWidget {
                   _infoTile(Icons.storage_outlined, 'Data Storage',
                       'Firebase Firestore'),
                 ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Device Feature: Local Notifications Card
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.notifications_active_outlined,
+                            color: AppColors.primary, size: 22),
+                        SizedBox(width: 10),
+                        Text(
+                          'Device Feature: Notifications',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Test your device local notification banner and sound.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: AppColors.primary),
+                          foregroundColor: AppColors.primary,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        icon: const Icon(Icons.send_rounded, size: 18),
+                        label: const Text(
+                          'Send Test Notification',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        onPressed: () async {
+                          await NotificationService().showTestNotification();
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Notification sent! Check your notification bar.'),
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 32),

@@ -32,6 +32,16 @@ class ExpenseService {
     }
   }
 
+  // 1b. Fetch all expenses once (for budget threshold checks)
+  Future<List<ExpenseModel>> getExpensesOnce() async {
+    try {
+      final snap = await _expensesRef.orderBy('date', descending: true).get();
+      return snap.docs.map((doc) => ExpenseModel.fromFirestore(doc)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
   // 2. Add a new expense
   Future<void> addExpense(ExpenseModel expense) async {
     await _expensesRef.add(expense.toMap());

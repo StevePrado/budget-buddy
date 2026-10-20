@@ -7,8 +7,10 @@ import '../../constants/expense_categories.dart';
 import '../../models/expense_model.dart';
 import '../../services/budget_service.dart';
 import '../../services/expense_service.dart';
+import '../../services/notification_service.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/money_format.dart';
+import '../../utils/period_helper.dart';
 import '../../widgets/confirm_dialog.dart';
 import '../../widgets/main_shell.dart';
 import '../budget/budget_screen.dart';
@@ -277,6 +279,9 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
         await _expenseService.addExpense(expense);
       }
 
+      // Check budget thresholds in background to notify user if near or over budget
+      _checkBudgetAndNotify();
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -299,6 +304,84 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  /// Evaluates current period expenses against the user's budget and triggers notifications
+  Future<void> _checkBudgetAndNotify() async {
+    try {
+      final budget = await _budgetService.getBudget();
+      if (budget == null) return;
+
+      final expenses = await _expenseService.getExpensesOnce();
+
+      // Priority 1: Check Daily Budget
+      if (budget.dailyBudget > 0) {
+        final dailySpent = PeriodHelper.calculatePeriodTotal(expenses, 'Daily');
+        if (dailySpent > budget.dailyBudget) {
+          final over = dailySpent - budget.dailyBudget;
+          await NotificationService().showOverBudgetAlert(
+            period: 'Daily',
+            overAmount: over,
+          );
+          return;
+        } else if (dailySpent >= (budget.dailyBudget * 0.8)) {
+          final pct = (dailySpent / budget.dailyBudget) * 100;
+          final left = budget.dailyBudget - dailySpent;
+          await NotificationService().showBudgetNearLimitAlert(
+            period: 'Daily',
+            percentUsed: pct,
+            remainingAmount: left,
+          );
+          return;
+        }
+      }
+
+      // Priority 2: Check Weekly Budget
+      if (budget.weeklyBudget > 0) {
+        final weeklySpent = PeriodHelper.calculatePeriodTotal(expenses, 'Weekly');
+        if (weeklySpent > budget.weeklyBudget) {
+          final over = weeklySpent - budget.weeklyBudget;
+          await NotificationService().showOverBudgetAlert(
+            period: 'Weekly',
+            overAmount: over,
+          );
+          return;
+        } else if (weeklySpent >= (budget.weeklyBudget * 0.8)) {
+          final pct = (weeklySpent / budget.weeklyBudget) * 100;
+          final left = budget.weeklyBudget - weeklySpent;
+          await NotificationService().showBudgetNearLimitAlert(
+            period: 'Weekly',
+            percentUsed: pct,
+            remainingAmount: left,
+          );
+          return;
+        }
+      }
+
+      // Priority 3: Check Monthly Budget
+      if (budget.monthlyBudget > 0) {
+        final monthlySpent = PeriodHelper.calculatePeriodTotal(expenses, 'Monthly');
+        if (monthlySpent > budget.monthlyBudget) {
+          final over = monthlySpent - budget.monthlyBudget;
+          await NotificationService().showOverBudgetAlert(
+            period: 'Monthly',
+            overAmount: over,
+          );
+          return;
+        } else if (monthlySpent >= (budget.monthlyBudget * 0.8)) {
+          final pct = (monthlySpent / budget.monthlyBudget) * 100;
+          final left = budget.monthlyBudget - monthlySpent;
+          await NotificationService().showBudgetNearLimitAlert(
+            period: 'Monthly',
+            percentUsed: pct,
+            remainingAmount: left,
+          );
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error evaluating budget notifications: $e');
     }
   }
 

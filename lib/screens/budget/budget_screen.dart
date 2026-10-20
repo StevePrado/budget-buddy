@@ -424,7 +424,7 @@ Future<void> showSetBudgetDialog(
                                           ),
                                         )
                                       : const Text(
-                                          'Save Budget',
+                                          'Save',
                                           style: TextStyle(
                                             fontSize: 14,
                                             fontWeight: FontWeight.w700,
@@ -534,7 +534,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                                   const EdgeInsets.symmetric(horizontal: 4.0),
                               child: ChoiceChip(
                                 label: Text(
-                                  '$period View',
+                                  period,
                                   style: TextStyle(
                                     color: isSelected
                                         ? Colors.white

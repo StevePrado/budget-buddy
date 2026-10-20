@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 import 'constants/app_strings.dart';
 import 'firebase_options.dart';
 import 'screens/auth/login_screen.dart';
+import 'services/notification_service.dart';
 import 'theme/app_theme.dart';
 import 'widgets/main_shell.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await NotificationService().init();
   runApp(const BudgetBuddyApp());
 }
 
