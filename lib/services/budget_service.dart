@@ -15,11 +15,15 @@ class BudgetService {
     }
   }
 
+  // Reference to users/{uid}/budget document
+  DocumentReference<Map<String, dynamic>> get _budgetDoc =>
+      _firestore.collection('users').doc(currentUserId).collection('settings').doc('budget');
+
   // 1. Stream the student's budget document in real time
   Stream<BudgetModel> streamUserBudget() {
     final uid = currentUserId;
     try {
-      return _firestore.collection('budgets').doc(uid).snapshots().map((doc) {
+      return _budgetDoc.snapshots().map((doc) {
         return BudgetModel.fromFirestore(doc, uid);
       });
     } catch (_) {
@@ -51,10 +55,7 @@ class BudgetService {
     );
 
     try {
-      await _firestore
-          .collection('budgets')
-          .doc(uid)
-          .set(budget.toMap(), SetOptions(merge: true));
+      await _budgetDoc.set(budget.toMap(), SetOptions(merge: true));
     } catch (e) {
       // Firebase save fallback for offline/test environment
     }
@@ -64,7 +65,7 @@ class BudgetService {
   Future<void> updateSelectedPeriod(String period) async {
     final uid = currentUserId;
     try {
-      await _firestore.collection('budgets').doc(uid).set(
+      await _budgetDoc.set(
         {
           'userId': uid,
           'selectedPeriod': period,
@@ -75,13 +76,14 @@ class BudgetService {
     } catch (_) {}
   }
 
-  // 4. Stream Total Expenses from the 'expenses' collection for this user
+  // 4. Stream Total Expenses from the expenses subcollection
   Stream<double> streamTotalExpenses() {
     final uid = currentUserId;
     try {
       return _firestore
+          .collection('users')
+          .doc(uid)
           .collection('expenses')
-          .where('userId', isEqualTo: uid)
           .snapshots()
           .map((snapshot) {
         double total = 0.0;
